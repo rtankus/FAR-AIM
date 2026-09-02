@@ -1,0 +1,66 @@
+name: Refresh FAR/AIM content
+
+on:
+  schedule:
+    # Every Monday 09:00 UTC. eCFR/AIM don't change daily, so weekly is
+    # plenty — bump this if you want tighter currency.
+    - cron: "0 9 * * 1"
+  workflow_dispatch: {} # lets you trigger a run manually from the Actions tab
+
+permissions:
+  contents: write # needed to commit the rebuilt bundle and publish a release
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: content-pipeline/package-lock.json
+
+      - name: Install content pipeline deps
+        working-directory: content-pipeline
+        run: npm ci
+
+      - name: Fetch FAR (eCFR) + AIM (FAA) and build the SQLite bundle
+        working-directory: content-pipeline
+        run: npm run build
+
+      - name: Check whether content actually changed
+        id: diff
+        run: |
+          if git diff --quiet -- assets/content/manifest.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit refreshed bundle back to the repo
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add assets/content/faraim.db assets/content/manifest.json
+          git commit -m "content: refresh FAR/AIM bundle $(date -u +%Y-%m-%d)"
+          git push
+
+      # Publishes assets/content/faraim.db + manifest.json to a single
+      # rolling release tag, so the app always has one stable URL to check:
+      #   https://github.com/<owner>/<repo>/releases/download/content-latest/manifest.json
+      #   https://github.com/<owner>/<repo>/releases/download/content-latest/faraim.db
+      - name: Publish to the rolling "content-latest" release
+        if: steps.diff.outputs.changed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: content-latest
+          name: "FAR/AIM content (latest)"
+          body: "Auto-published by the weekly content-refresh workflow. Not a code release — see CHANGELOG/app releases for that."
+          files: |
+            assets/content/faraim.db
+            assets/content/manifest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
