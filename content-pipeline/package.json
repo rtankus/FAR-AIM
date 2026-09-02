@@ -1,0 +1,17 @@
+{
+  "name": "far-aim-content-pipeline",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fetches FAR (eCFR) and AIM (FAA) content and builds the offline SQLite bundle + update manifest consumed by the app.",
+  "scripts": {
+    "fetch:far": "node scripts/fetch-far.mjs",
+    "fetch:aim": "node scripts/scrape-aim.mjs",
+    "build:db": "node scripts/build-db.mjs",
+    "build": "npm run fetch:far && npm run fetch:aim && npm run build:db"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "cheerio": "^1.0.0"
+  }
+}

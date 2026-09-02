@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# content pipeline intermediates (regenerate with `npm run build` in content-pipeline/)
+content-pipeline/output/

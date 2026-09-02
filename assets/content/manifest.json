@@ -1,0 +1,10 @@
+{
+  "version": "2026-09-02T21-50-58-407Z",
+  "builtAt": "2026-09-02T21:50:58.437Z",
+  "sha256": "f70b8883d44c4e0968389936de895731cf89370b78a6e8c9e5f817b566064287",
+  "sizeBytes": 5525504,
+  "sectionCount": 1027,
+  "farSectionCount": 595,
+  "aimSectionCount": 432,
+  "downloadUrl": "https://github.com/rtankus/FAR-AIM/releases/download/content-latest/faraim.db"
+}
