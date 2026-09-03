@@ -18,7 +18,9 @@ export default function PartsListScreen({ route, navigation }: Props) {
   const [parts, setParts] = useState<PartSummary[]>([]);
 
   useEffect(() => {
-    navigation.setOptions({ title: source === "FAR" ? "14 CFR Parts" : "AIM Chapters" });
+    navigation.setOptions({
+      title: source === "FAR" ? "14 CFR Parts" : source === "AIM" ? "AIM Chapters" : "Advisory Circulars",
+    });
     listParts(db, source).then(setParts);
   }, [db, source, navigation]);
 
@@ -31,7 +33,7 @@ export default function PartsListScreen({ route, navigation }: Props) {
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           onPress={() => navigation.navigate("SectionsList", { source, part: item.part })}
         >
-          <Text style={styles.label}>{source === "FAR" ? `Part ${item.part}` : item.part}</Text>
+          <Text style={styles.label}>{source === "AIM" ? item.part : `Part ${item.part}`}</Text>
           <Text style={styles.count}>{item.count}</Text>
         </Pressable>
       )}

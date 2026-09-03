@@ -159,14 +159,6 @@ export function SectionDetailView({
     [pendingStart, annotateMode, userDb, id, refreshHighlights]
   );
 
-  const handleHighlightPress = useCallback(
-    (highlightId: string) => {
-      const h = highlights.find((x) => x.id === highlightId);
-      if (h) setEditingHighlight(h);
-    },
-    [highlights]
-  );
-
   const quotedTextFor = useCallback(
     (start: number, end: number) => {
       if (!section) return "";
@@ -225,7 +217,6 @@ export function SectionDetailView({
             annotating={annotateMode != null}
             pendingStart={pendingStart}
             onWordPress={handleWordPress}
-            onHighlightPress={handleHighlightPress}
           />
 
           <DrawingCanvas
@@ -238,6 +229,24 @@ export function SectionDetailView({
             onStrokeComplete={handleStrokeComplete}
           />
         </View>
+
+        {highlights.length > 0 && (
+          <View style={styles.highlightsSection}>
+            <Text style={styles.highlightsHeading}>Your Highlights & Notes</Text>
+            {highlights.map((h) => (
+              <Pressable
+                key={h.id}
+                onPress={() => setEditingHighlight(h)}
+                style={({ pressed }) => [styles.highlightCard, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={styles.highlightQuote} numberOfLines={3}>
+                  “{quotedTextFor(h.start_index, h.end_index)}”
+                </Text>
+                {h.note?.trim() ? <Text style={styles.highlightNote}>📝 {h.note}</Text> : null}
+              </Pressable>
+            ))}
+          </View>
+        )}
       </ScrollView>
 
       {/* Fixed panel below the ScrollView — never needs scrolling to reach. */}
@@ -364,6 +373,22 @@ function makeStyles(colors: ThemeColors, spacing: (n: number) => number, fontSca
     pageArea: { position: "relative" },
     path: { fontSize: 12 * fontScale, color: colors.textMuted, marginBottom: spacing(1) },
     title: { fontSize: 22 * fontScale, fontWeight: "800", color: colors.text, marginBottom: spacing(2) },
+    highlightsSection: { marginTop: spacing(3) },
+    highlightsHeading: {
+      fontSize: 13 * fontScale,
+      fontWeight: "700",
+      color: colors.textMuted,
+      textTransform: "uppercase",
+      marginBottom: spacing(1),
+    },
+    highlightCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 10,
+      padding: spacing(1.5),
+      marginBottom: spacing(1),
+    },
+    highlightQuote: { fontSize: 14 * fontScale, fontStyle: "italic", color: colors.text },
+    highlightNote: { fontSize: 14 * fontScale, color: colors.primary, marginTop: spacing(0.75) },
     annotateHint: {
       fontSize: 13 * fontScale,
       color: colors.primary,

@@ -20,7 +20,7 @@ export default function SectionsListScreen({ route, navigation }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
-    navigation.setOptions({ title: source === "FAR" ? `Part ${part}` : part });
+    navigation.setOptions({ title: source === "AIM" ? part : `Part ${part}` });
     listSectionsInPart(db, source, part).then((rows) => {
       setSections(rows);
       if (isTablet) setSelectedId((current) => current ?? rows[0]?.id ?? null);

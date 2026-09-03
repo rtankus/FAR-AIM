@@ -3,15 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Fetches FAR (eCFR) and AIM (FAA) content and builds the offline SQLite bundle + update manifest consumed by the app.",
+  "description": "Fetches FAR (eCFR), AIM (FAA), and Advisory Circular (FAA) content and builds the offline SQLite bundle + update manifest consumed by the app.",
   "scripts": {
     "fetch:far": "node scripts/fetch-far.mjs",
     "fetch:aim": "node scripts/scrape-aim.mjs",
+    "fetch:acs": "node scripts/fetch-acs.mjs",
     "build:db": "node scripts/build-db.mjs",
-    "build": "npm run fetch:far && npm run fetch:aim && npm run build:db"
+    "build": "npm run fetch:far && npm run fetch:aim && npm run fetch:acs && npm run build:db"
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0",
-    "cheerio": "^1.0.0"
+    "cheerio": "^1.0.0",
+    "pdf-parse": "^2.4.5"
   }
 }

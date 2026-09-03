@@ -9,6 +9,7 @@ export interface ThemeColors {
   primary: string;
   farBadge: string;
   aimBadge: string;
+  acBadge: string;
   danger: string;
 }
 
@@ -21,6 +22,7 @@ export const lightColors: ThemeColors = {
   primary: "#0B5FFF",
   farBadge: "#0B5FFF",
   aimBadge: "#B4530A",
+  acBadge: "#5E7B0B",
   danger: "#C0392B",
 };
 
@@ -33,6 +35,7 @@ export const darkColors: ThemeColors = {
   primary: "#5B9BFF",
   farBadge: "#5B9BFF",
   aimBadge: "#E2924A",
+  acBadge: "#8FB53A",
   danger: "#FF6E5F",
 };
 

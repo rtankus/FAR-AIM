@@ -1,4 +1,4 @@
-export type Source = "FAR" | "AIM";
+export type Source = "FAR" | "AIM" | "AC";
 
 export interface Section {
   id: string;
@@ -24,5 +24,6 @@ export interface ContentManifest {
   sectionCount: number;
   farSectionCount: number;
   aimSectionCount: number;
+  acSectionCount: number;
   downloadUrl: string;
 }

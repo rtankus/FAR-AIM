@@ -1,4 +1,4 @@
-// Combines output/far.json + output/aim.json into a single SQLite database
+// Combines output/far.json + output/aim.json + output/ac.json into a single SQLite database
 // (with an FTS5 full-text index) and writes a version manifest. The app ships
 // with a copy of this .db bundled at install time, then checks the manifest
 // on launch (when online) to see if a newer bundle is available.
@@ -17,11 +17,12 @@ const MANIFEST_PATH = path.join(OUT_DIR, "manifest.json");
 const APP_ASSETS_DIR = path.join(__dirname, "..", "..", "assets", "content");
 
 async function loadSections() {
-  const [far, aim] = await Promise.all([
+  const [far, aim, ac] = await Promise.all([
     readFile(path.join(OUT_DIR, "far.json"), "utf-8").then(JSON.parse).catch(() => []),
     readFile(path.join(OUT_DIR, "aim.json"), "utf-8").then(JSON.parse).catch(() => []),
+    readFile(path.join(OUT_DIR, "ac.json"), "utf-8").then(JSON.parse).catch(() => []),
   ]);
-  return [...far, ...aim];
+  return [...far, ...aim, ...ac];
 }
 
 function buildDatabase(sections) {
@@ -102,6 +103,7 @@ async function main() {
     sectionCount: sections.length,
     farSectionCount: sections.filter((s) => s.source === "FAR").length,
     aimSectionCount: sections.filter((s) => s.source === "AIM").length,
+    acSectionCount: sections.filter((s) => s.source === "AC").length,
     // Published by .github/workflows/update-content.yml to a rolling
     // "content-latest" GitHub Release. Keep in sync with GITHUB_REPO in
     // ../../src/config.ts.
@@ -119,7 +121,7 @@ async function main() {
   );
 
   console.log(`\nBuilt ${DB_PATH}`);
-  console.log(`  ${sections.length} sections (${manifest.farSectionCount} FAR, ${manifest.aimSectionCount} AIM)`);
+  console.log(`  ${sections.length} sections (${manifest.farSectionCount} FAR, ${manifest.aimSectionCount} AIM, ${manifest.acSectionCount} AC)`);
   console.log(`  version ${version}`);
   console.log(`Copied bundle into ${APP_ASSETS_DIR}`);
 }

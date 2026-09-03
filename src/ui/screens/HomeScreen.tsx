@@ -93,6 +93,7 @@ export default function HomeScreen({ navigation }: Props) {
       <View style={styles.grid}>
         <NavCard label="Browse FARs" hint="14 CFR by Part" onPress={() => navigation.navigate("PartsList", { source: "FAR" })} />
         <NavCard label="Browse AIM" hint="By Chapter" onPress={() => navigation.navigate("PartsList", { source: "AIM" })} />
+        <NavCard label="Browse ACs" hint="Advisory Circulars" onPress={() => navigation.navigate("PartsList", { source: "AC" })} />
         <NavCard label="Search" hint="Full text" onPress={() => navigation.navigate("Search")} />
         <NavCard label="Bookmarks" hint="Saved sections" onPress={() => navigation.navigate("Bookmarks")} />
         <NavCard label="Settings" hint="Appearance & text size" onPress={() => navigation.navigate("Settings")} />

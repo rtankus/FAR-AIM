@@ -13,7 +13,8 @@ export function SectionListItem({
 }) {
   const { colors, spacing, fontScale } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, fontScale), [colors, spacing, fontScale]);
-  const badgeColor = section.source === "FAR" ? colors.farBadge : colors.aimBadge;
+  const badgeColor =
+    section.source === "FAR" ? colors.farBadge : section.source === "AIM" ? colors.aimBadge : colors.acBadge;
   return (
     <Pressable
       onPress={onPress}
