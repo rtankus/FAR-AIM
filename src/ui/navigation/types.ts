@@ -7,4 +7,5 @@ export type RootStackParamList = {
   Detail: { id: string };
   Search: undefined;
   Bookmarks: undefined;
+  Settings: undefined;
 };

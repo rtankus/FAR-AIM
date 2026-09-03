@@ -6,17 +6,21 @@ import SectionsListScreen from "../screens/SectionsListScreen";
 import DetailScreen from "../screens/DetailScreen";
 import SearchScreen from "../screens/SearchScreen";
 import BookmarksScreen from "../screens/BookmarksScreen";
-import { theme } from "../theme";
+import SettingsScreen from "../screens/SettingsScreen";
+import { useTheme } from "../ThemeContext";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
+  const { colors } = useTheme();
+
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: theme.colors.background },
-        headerTintColor: theme.colors.text,
+        headerStyle: { backgroundColor: colors.background },
+        headerTintColor: colors.text,
         headerShadowVisible: false,
+        contentStyle: { backgroundColor: colors.background },
       }}
     >
       <Stack.Screen name="Home" component={HomeScreen} options={{ title: "FAR/AIM" }} />
@@ -25,6 +29,7 @@ export default function RootNavigator() {
       <Stack.Screen name="Detail" component={DetailScreen} />
       <Stack.Screen name="Search" component={SearchScreen} options={{ title: "Search" }} />
       <Stack.Screen name="Bookmarks" component={BookmarksScreen} options={{ title: "Bookmarks" }} />
+      <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: "Settings" }} />
     </Stack.Navigator>
   );
 }

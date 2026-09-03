@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
-import { theme } from "../theme";
+import { useTheme } from "../ThemeContext";
+import type { ThemeColors } from "../theme";
 
 /**
  * Two-pane layout used on tablets: a master list on the left, detail content
@@ -8,6 +9,8 @@ import { theme } from "../theme";
  * instead (see useIsTablet).
  */
 export function SplitView({ master, detail }: { master: ReactNode; detail: ReactNode }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={styles.row}>
       <View style={styles.master}>{master}</View>
@@ -16,12 +19,14 @@ export function SplitView({ master, detail }: { master: ReactNode; detail: React
   );
 }
 
-const styles = StyleSheet.create({
-  row: { flex: 1, flexDirection: "row" },
-  master: {
-    width: 360,
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: theme.colors.border,
-  },
-  detail: { flex: 1 },
-});
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    row: { flex: 1, flexDirection: "row" },
+    master: {
+      width: 360,
+      borderRightWidth: StyleSheet.hairlineWidth,
+      borderRightColor: colors.border,
+    },
+    detail: { flex: 1 },
+  });
+}

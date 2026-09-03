@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { FlatList, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -9,13 +9,16 @@ import { SectionListItem } from "../components/SectionListItem";
 import { SplitView } from "../components/SplitView";
 import { SectionDetailPlaceholder, SectionDetailView } from "../components/SectionDetailView";
 import { useIsTablet } from "../hooks/useIsTablet";
-import { theme } from "../theme";
+import { useTheme } from "../ThemeContext";
+import type { ThemeColors } from "../theme";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Search">;
 
 export default function SearchScreen({ navigation }: Props) {
   const db = useSQLiteContext();
   const isTablet = useIsTablet();
+  const { colors, spacing, fontScale } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, spacing, fontScale), [colors, spacing, fontScale]);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Section[]>([]);
   const [searched, setSearched] = useState(false);
@@ -44,7 +47,7 @@ export default function SearchScreen({ navigation }: Props) {
         value={query}
         onChangeText={runSearch}
         placeholder="Search FAR & AIM (e.g. “right of way”, “91.3”)"
-        placeholderTextColor={theme.colors.textMuted}
+        placeholderTextColor={colors.textMuted}
         style={styles.input}
         returnKeyType="search"
       />
@@ -82,18 +85,20 @@ export default function SearchScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.background },
-  listCol: { flex: 1, backgroundColor: theme.colors.background },
-  input: {
-    margin: theme.spacing(2),
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 10,
-    paddingHorizontal: theme.spacing(1.5),
-    paddingVertical: theme.spacing(1.25),
-    fontSize: 16,
-    color: theme.colors.text,
-  },
-  empty: { textAlign: "center", color: theme.colors.textMuted, marginTop: theme.spacing(4) },
-});
+function makeStyles(colors: ThemeColors, spacing: (n: number) => number, fontScale: number) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    listCol: { flex: 1, backgroundColor: colors.background },
+    input: {
+      margin: spacing(2),
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      paddingHorizontal: spacing(1.5),
+      paddingVertical: spacing(1.25),
+      fontSize: 16 * fontScale,
+      color: colors.text,
+    },
+    empty: { textAlign: "center", color: colors.textMuted, marginTop: spacing(4), fontSize: 14 * fontScale },
+  });
+}

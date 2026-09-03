@@ -59,14 +59,15 @@ export async function checkForContentUpdate(
 }
 
 /**
- * Downloads the new database bundle and swaps it in place of the current one.
- * The caller MUST close its existing SQLiteDatabase connection (db.closeAsync())
- * before calling this, and reopen (or remount <SQLiteProvider>) after it resolves.
+ * Downloads the new database bundle to a temp file. Safe to call while the
+ * current SQLiteDatabase connection is still open — nothing here touches the
+ * live database file, so a network failure at this stage leaves the app
+ * fully usable.
  */
-export async function downloadAndApplyContentUpdate(
+export async function downloadContentUpdate(
   manifest: ContentManifest,
   onProgress?: (fractionDownloaded: number) => void
-): Promise<void> {
+): Promise<File> {
   const tempFile = new File(Paths.cache, "faraim-update.db");
   if (tempFile.exists) tempFile.delete();
 
@@ -79,6 +80,16 @@ export async function downloadAndApplyContentUpdate(
       : undefined,
   });
 
+  return tempFile;
+}
+
+/**
+ * Swaps the already-downloaded database bundle in place of the current one.
+ * The caller MUST close its existing SQLiteDatabase connection (db.closeAsync())
+ * before calling this, and reopen (or remount <SQLiteProvider>) after it
+ * settles — including on failure, since the old file may already be gone.
+ */
+export async function applyDownloadedContentUpdate(tempFile: File): Promise<void> {
   const target = dbFile();
   if (target.exists) target.delete();
   // WAL sidecar files, if present, are stale once we replace the main file.

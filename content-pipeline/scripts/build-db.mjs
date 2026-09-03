@@ -49,16 +49,6 @@ function buildDatabase(sections) {
       title, body, content='sections', content_rowid='rowid'
     );
 
-    CREATE TABLE bookmarks (
-      section_id TEXT PRIMARY KEY,
-      created_at INTEGER NOT NULL
-    );
-
-    CREATE TABLE recently_viewed (
-      section_id TEXT NOT NULL,
-      viewed_at INTEGER NOT NULL
-    );
-
     CREATE TABLE meta (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL

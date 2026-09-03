@@ -10,5 +10,13 @@ export default function DetailScreen({ route, navigation }: Props) {
     (title: string) => navigation.setOptions({ title }),
     [navigation]
   );
-  return <SectionDetailView id={route.params.id} onTitleChange={onTitleChange} />;
+  // Drawing strokes near the left edge otherwise fight the iOS
+  // swipe-to-go-back gesture, so disable it for as long as draw mode is on.
+  const onDrawModeChange = useCallback(
+    (active: boolean) => navigation.setOptions({ gestureEnabled: !active }),
+    [navigation]
+  );
+  return (
+    <SectionDetailView id={route.params.id} onTitleChange={onTitleChange} onDrawModeChange={onDrawModeChange} />
+  );
 }

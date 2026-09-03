@@ -1,5 +1,7 @@
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { theme } from "../theme";
+import { useTheme } from "../ThemeContext";
+import type { ThemeColors } from "../theme";
 import type { Section } from "../../content/types";
 
 export function SectionListItem({
@@ -9,7 +11,9 @@ export function SectionListItem({
   section: Section;
   onPress: () => void;
 }) {
-  const badgeColor = section.source === "FAR" ? theme.colors.farBadge : theme.colors.aimBadge;
+  const { colors, spacing, fontScale } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, spacing, fontScale), [colors, spacing, fontScale]);
+  const badgeColor = section.source === "FAR" ? colors.farBadge : colors.aimBadge;
   return (
     <Pressable
       onPress={onPress}
@@ -30,26 +34,28 @@ export function SectionListItem({
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: theme.spacing(1.5),
-    paddingHorizontal: theme.spacing(2),
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.colors.border,
-    gap: theme.spacing(1.5),
-  },
-  rowPressed: { backgroundColor: theme.colors.surface },
-  badge: {
-    minWidth: 64,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    alignItems: "center",
-  },
-  badgeText: { color: "#fff", fontWeight: "700", fontSize: 12 },
-  textCol: { flex: 1 },
-  title: { fontSize: 16, fontWeight: "600", color: theme.colors.text },
-  path: { fontSize: 12, color: theme.colors.textMuted, marginTop: 2 },
-});
+function makeStyles(colors: ThemeColors, spacing: (n: number) => number, fontScale: number) {
+  return StyleSheet.create({
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: spacing(1.5),
+      paddingHorizontal: spacing(2),
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+      gap: spacing(1.5),
+    },
+    rowPressed: { backgroundColor: colors.surface },
+    badge: {
+      minWidth: 64,
+      paddingVertical: 4,
+      paddingHorizontal: 8,
+      borderRadius: 6,
+      alignItems: "center",
+    },
+    badgeText: { color: "#fff", fontWeight: "700", fontSize: 12 * fontScale },
+    textCol: { flex: 1 },
+    title: { fontSize: 16 * fontScale, fontWeight: "600", color: colors.text },
+    path: { fontSize: 12 * fontScale, color: colors.textMuted, marginTop: 2 },
+  });
+}

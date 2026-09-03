@@ -1,11 +1,13 @@
 import { Suspense, useCallback, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, DarkTheme, DefaultTheme } from "@react-navigation/native";
 import { SQLiteProvider } from "expo-sqlite";
 import { StatusBar } from "expo-status-bar";
 import RootNavigator from "./src/ui/navigation/RootNavigator";
 import { ReloadContext } from "./src/ui/ReloadContext";
+import { UserDbProvider } from "./src/ui/UserDbContext";
+import { ThemeProvider, useTheme } from "./src/ui/ThemeContext";
 import { DB_NAME, bundledDbAsset } from "./src/db/database";
 import { theme } from "./src/ui/theme";
 
@@ -25,14 +27,31 @@ export default function App() {
             assetSource={{ assetId: bundledDbAsset }}
             useSuspense
           >
-            <NavigationContainer>
-              <StatusBar style="dark" />
-              <RootNavigator />
-            </NavigationContainer>
+            <UserDbProvider>
+              <ThemeProvider>
+                <AppShell />
+              </ThemeProvider>
+            </UserDbProvider>
           </SQLiteProvider>
         </Suspense>
       </ReloadContext.Provider>
     </SafeAreaProvider>
+  );
+}
+
+function AppShell() {
+  const { scheme, colors } = useTheme();
+  const navTheme = scheme === "dark" ? DarkTheme : DefaultTheme;
+  return (
+    <NavigationContainer
+      theme={{
+        ...navTheme,
+        colors: { ...navTheme.colors, background: colors.background, card: colors.background, text: colors.text, border: colors.border, primary: colors.primary },
+      }}
+    >
+      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+      <RootNavigator />
+    </NavigationContainer>
   );
 }
 

@@ -24,6 +24,18 @@ export async function getSection(db: SQLiteDatabase, id: string): Promise<Sectio
   return db.getFirstAsync<Section>(`SELECT * FROM sections WHERE id = ?`, [id]);
 }
 
+/** Fetches sections by id, preserving the order of `ids` (e.g. bookmark or recency order). */
+export async function getSectionsByIds(db: SQLiteDatabase, ids: string[]): Promise<Section[]> {
+  if (ids.length === 0) return [];
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = await db.getAllAsync<Section>(
+    `SELECT * FROM sections WHERE id IN (${placeholders})`,
+    ids
+  );
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return ids.map((id) => byId.get(id)).filter((s): s is Section => s != null);
+}
+
 export async function searchSections(
   db: SQLiteDatabase,
   query: string,
@@ -46,54 +58,6 @@ export async function searchSections(
   );
 }
 
-export async function isBookmarked(db: SQLiteDatabase, sectionId: string): Promise<boolean> {
-  const row = await db.getFirstAsync<{ section_id: string }>(
-    `SELECT section_id FROM bookmarks WHERE section_id = ?`,
-    [sectionId]
-  );
-  return row != null;
-}
-
-export async function toggleBookmark(db: SQLiteDatabase, sectionId: string): Promise<boolean> {
-  const bookmarked = await isBookmarked(db, sectionId);
-  if (bookmarked) {
-    await db.runAsync(`DELETE FROM bookmarks WHERE section_id = ?`, [sectionId]);
-    return false;
-  }
-  await db.runAsync(`INSERT INTO bookmarks (section_id, created_at) VALUES (?, ?)`, [
-    sectionId,
-    Date.now(),
-  ]);
-  return true;
-}
-
-export async function listBookmarkedSections(db: SQLiteDatabase): Promise<Section[]> {
-  return db.getAllAsync<Section>(
-    `SELECT s.* FROM bookmarks b
-     JOIN sections s ON s.id = b.section_id
-     ORDER BY b.created_at DESC`
-  );
-}
-
-export async function recordRecentlyViewed(db: SQLiteDatabase, sectionId: string): Promise<void> {
-  await db.runAsync(`INSERT INTO recently_viewed (section_id, viewed_at) VALUES (?, ?)`, [
-    sectionId,
-    Date.now(),
-  ]);
-  // Keep the table from growing unbounded.
-  await db.runAsync(
-    `DELETE FROM recently_viewed WHERE rowid NOT IN (
-       SELECT rowid FROM recently_viewed ORDER BY viewed_at DESC LIMIT 200
-     )`
-  );
-}
-
-export async function listRecentlyViewed(db: SQLiteDatabase, limit = 20): Promise<Section[]> {
-  return db.getAllAsync<Section>(
-    `SELECT s.*, MAX(r.viewed_at) as last_viewed FROM recently_viewed r
-     JOIN sections s ON s.id = r.section_id
-     GROUP BY s.id
-     ORDER BY last_viewed DESC LIMIT ?`,
-    [limit]
-  );
-}
+// Bookmarks, recently-viewed, and highlights/notes live in a separate
+// user-only database now — see ../db/userdb.ts — so they survive content
+// updates, which replace this database's file wholesale.

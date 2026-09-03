@@ -25,15 +25,28 @@ async function getLatestIssueDate() {
   return title14.latest_issue_date; // eCFR only has data up through this date
 }
 
-function stripTags(html) {
-  return html
-    .replace(/<HEAD>.*?<\/HEAD>/s, "") // title handled separately
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&#xA7;/g, "§")
-    .replace(/&#x2014;/g, "—")
-    .replace(/&#x2019;/g, "’")
-    .replace(/&amp;/g, "&")
+// Decodes every numeric character reference (&#xB1; &#8217; etc.) plus the
+// handful of named entities the eCFR XML actually uses — rather than a
+// hardcoded shortlist, which silently left anything not on the list (curly
+// quotes, ±, en dashes, ...) as literal "&#x201C;"-style text in the body.
+function decodeEntities(str) {
+  return str
+    .replace(/&#x([0-9A-Fa-f]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&"); // must run last, so a decoded "&#38;" -> "&" isn't re-escaped
+}
+
+function stripTags(html) {
+  return decodeEntities(
+    html
+      .replace(/<HEAD>.*?<\/HEAD>/s, "") // title handled separately
+      .replace(/<[^>]+>/g, " ")
+  )
     .replace(/\s*\n\s*/g, "\n")
     .replace(/[ \t]+/g, " ")
     .replace(/\n{2,}/g, "\n\n")

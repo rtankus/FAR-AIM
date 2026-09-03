@@ -1,22 +1,28 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { FlatList, StyleSheet, Text } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSQLiteContext } from "expo-sqlite";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/types";
 import type { Section } from "../../content/types";
-import { listBookmarkedSections } from "../../db/queries";
+import { getSectionsByIds } from "../../db/queries";
+import { listBookmarkedSectionIds } from "../../db/userdb";
+import { useUserDb } from "../UserDbContext";
 import { SectionListItem } from "../components/SectionListItem";
 import { SplitView } from "../components/SplitView";
 import { SectionDetailPlaceholder, SectionDetailView } from "../components/SectionDetailView";
 import { useIsTablet } from "../hooks/useIsTablet";
-import { theme } from "../theme";
+import { useTheme } from "../ThemeContext";
+import type { ThemeColors } from "../theme";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Bookmarks">;
 
 export default function BookmarksScreen({ navigation }: Props) {
   const db = useSQLiteContext();
+  const userDb = useUserDb();
   const isTablet = useIsTablet();
+  const { colors, spacing, fontScale } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, spacing, fontScale), [colors, spacing, fontScale]);
   const [bookmarks, setBookmarks] = useState<Section[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -24,11 +30,12 @@ export default function BookmarksScreen({ navigation }: Props) {
   // from the detail view and we want the list to reflect that on return.
   useFocusEffect(
     useCallback(() => {
-      listBookmarkedSections(db).then((rows) => {
+      listBookmarkedSectionIds(userDb).then(async (ids) => {
+        const rows = await getSectionsByIds(db, ids);
         setBookmarks(rows);
         setSelectedId((current) => current ?? rows[0]?.id ?? null);
       });
-    }, [db])
+    }, [db, userDb])
   );
 
   const list = (
@@ -65,6 +72,14 @@ export default function BookmarksScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  empty: { textAlign: "center", color: theme.colors.textMuted, marginTop: theme.spacing(4), paddingHorizontal: theme.spacing(3) },
-});
+function makeStyles(colors: ThemeColors, spacing: (n: number) => number, fontScale: number) {
+  return StyleSheet.create({
+    empty: {
+      textAlign: "center",
+      color: colors.textMuted,
+      marginTop: spacing(4),
+      paddingHorizontal: spacing(3),
+      fontSize: 14 * fontScale,
+    },
+  });
+}
