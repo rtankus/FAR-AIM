@@ -2,9 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useColorScheme } from "react-native";
 import { getSetting, setSetting } from "../db/userdb";
 import { useUserDb } from "./UserDbContext";
-import { darkColors, FONT_SCALES, lightColors, spacing, type FontSizeKey, type ThemeColors } from "./theme";
+import { darkColors, FONT_SCALES, lightColors, nightColors, spacing, type FontSizeKey, type ThemeColors } from "./theme";
 
-export type Appearance = "system" | "light" | "dark";
+export type Appearance = "system" | "light" | "dark" | "night";
 
 interface ThemeValue {
   colors: ThemeColors;
@@ -43,7 +43,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     (async () => {
       const savedAppearance = await getSetting(userDb, APPEARANCE_KEY);
       const savedFontSize = await getSetting(userDb, FONT_SIZE_KEY);
-      if (savedAppearance === "system" || savedAppearance === "light" || savedAppearance === "dark") {
+      if (
+        savedAppearance === "system" ||
+        savedAppearance === "light" ||
+        savedAppearance === "dark" ||
+        savedAppearance === "night"
+      ) {
         setAppearanceState(savedAppearance);
       }
       if (savedFontSize && savedFontSize in FONT_SCALES) {
@@ -68,9 +73,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     [userDb]
   );
 
+  // "night" is a red-on-black variant of dark mode — it drives the status
+  // bar/nav theme like ordinary dark mode (`scheme`), but supplies its own
+  // all-red color set rather than the normal dark palette.
   const scheme: "light" | "dark" =
-    appearance === "system" ? (systemScheme === "dark" ? "dark" : "light") : appearance;
-  const colors = scheme === "dark" ? darkColors : lightColors;
+    appearance === "system" ? (systemScheme === "dark" ? "dark" : "light") : appearance === "night" ? "dark" : appearance;
+  const colors = appearance === "night" ? nightColors : scheme === "dark" ? darkColors : lightColors;
   const fontScale = FONT_SCALES[fontSizeKey];
 
   const value = useMemo<ThemeValue>(

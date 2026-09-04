@@ -1,22 +1,178 @@
-import { useMemo } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSQLiteContext } from "expo-sqlite";
+import * as Network from "expo-network";
 import { useTheme, type Appearance } from "../ThemeContext";
 import { FONT_SIZE_LABELS, FONT_SCALES, type FontSizeKey, type ThemeColors } from "../theme";
+import { useReloadDatabase } from "../ReloadContext";
+import { useAirportsDb, useReloadAirportsDb } from "../AirportsDbContext";
+import {
+  applyDownloadedContentUpdate,
+  checkForContentUpdate,
+  downloadContentUpdate,
+  getInstalledVersion,
+  type UpdateCheckResult,
+} from "../../db/database";
+import {
+  applyDownloadedAirportsUpdate,
+  checkForAirportsUpdate,
+  downloadAirportsUpdate,
+  getInstalledAirportsVersion,
+  type AirportsUpdateCheckResult,
+} from "../../db/airportsDatabase";
 
 const APPEARANCE_OPTIONS: { key: Appearance; label: string }[] = [
   { key: "system", label: "System" },
   { key: "light", label: "Light" },
   { key: "dark", label: "Dark" },
+  { key: "night", label: "Night" },
 ];
 
 const FONT_SIZE_OPTIONS = Object.keys(FONT_SCALES) as FontSizeKey[];
 
 export default function SettingsScreen() {
+  const db = useSQLiteContext();
+  const reloadDatabase = useReloadDatabase();
+  const airportsDb = useAirportsDb();
+  const { close: closeAirportsDb, reopen: reopenAirportsDb } = useReloadAirportsDb();
   const { colors, spacing, appearance, setAppearance, fontSizeKey, setFontSizeKey } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing), [colors, spacing]);
+  const [version, setVersion] = useState<{ version: string; builtAt: string } | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [airportsVersion, setAirportsVersion] = useState<{ version: string; builtAt: string } | null>(null);
+  const [checkingAirports, setCheckingAirports] = useState(false);
+  const [updatingAirports, setUpdatingAirports] = useState(false);
+
+  useEffect(() => {
+    getInstalledVersion(db).then(setVersion);
+  }, [db]);
+
+  useEffect(() => {
+    if (airportsDb) getInstalledAirportsVersion(airportsDb).then(setAirportsVersion);
+  }, [airportsDb]);
+
+  const applyUpdate = useCallback(
+    async (res: UpdateCheckResult) => {
+      setUpdating(true);
+      try {
+        // Download first, while the shared db connection is still open — a
+        // network failure here leaves the app fully usable.
+        const tempFile = await downloadContentUpdate(res.remoteManifest);
+        await db.closeAsync();
+        try {
+          await applyDownloadedContentUpdate(tempFile);
+        } finally {
+          // Always reopen, even if the file swap above failed — otherwise
+          // every screen sharing this closed connection breaks until the
+          // app is force-quit.
+          reloadDatabase();
+        }
+      } catch (err) {
+        Alert.alert("Update failed", String(err));
+      } finally {
+        setUpdating(false);
+      }
+    },
+    [db, reloadDatabase]
+  );
+
+  const handleCheckForUpdates = useCallback(async () => {
+    const net = await Network.getNetworkStateAsync();
+    if (!net.isConnected || !net.isInternetReachable) {
+      Alert.alert("Offline", "Connect to the internet to check for FAR/AIM updates.");
+      return;
+    }
+    setChecking(true);
+    try {
+      const result = await checkForContentUpdate(db);
+      if (!result.updateAvailable) {
+        Alert.alert("Up to date", "You already have the latest FAR/AIM content.");
+        return;
+      }
+      Alert.alert(
+        "Update available",
+        `A newer FAR/AIM content bundle (${result.remoteManifest.version}) is available. Download it now?`,
+        [
+          { text: "Not now", style: "cancel" },
+          { text: "Download", onPress: () => applyUpdate(result) },
+        ]
+      );
+    } catch (err) {
+      const message = String(err instanceof Error ? err.message : err);
+      if (/closed/i.test(message)) {
+        // The shared db connection was left closed by an earlier update
+        // attempt that didn't fully recover — reopening it here means the
+        // user doesn't have to force-quit the app to get back to a working
+        // state, just retry.
+        reloadDatabase();
+        Alert.alert(
+          "Reconnected",
+          "The FAR/AIM database connection had dropped — it's been reopened. Try Check for Updates again."
+        );
+      } else {
+        Alert.alert("Couldn't check for updates", message);
+      }
+    } finally {
+      setChecking(false);
+    }
+  }, [db, applyUpdate, reloadDatabase]);
+
+  const applyAirportsUpdate = useCallback(
+    async (res: AirportsUpdateCheckResult) => {
+      setUpdatingAirports(true);
+      try {
+        // Download first, while the shared db connection is still open — a
+        // network failure here leaves the app fully usable.
+        const tempFile = await downloadAirportsUpdate(res.remoteManifest);
+        await closeAirportsDb();
+        try {
+          await applyDownloadedAirportsUpdate(tempFile);
+        } finally {
+          // Always reopen, even if the file swap above failed — otherwise
+          // every screen using airports.db breaks until the app is force-quit.
+          await reopenAirportsDb();
+        }
+      } catch (err) {
+        Alert.alert("Update failed", String(err));
+      } finally {
+        setUpdatingAirports(false);
+      }
+    },
+    [closeAirportsDb, reopenAirportsDb]
+  );
+
+  const handleCheckForAirportsUpdates = useCallback(async () => {
+    if (!airportsDb) return;
+    const net = await Network.getNetworkStateAsync();
+    if (!net.isConnected || !net.isInternetReachable) {
+      Alert.alert("Offline", "Connect to the internet to check for airport data updates.");
+      return;
+    }
+    setCheckingAirports(true);
+    try {
+      const result = await checkForAirportsUpdate(airportsDb);
+      if (!result.updateAvailable) {
+        Alert.alert("Up to date", "You already have the latest airport data.");
+        return;
+      }
+      Alert.alert(
+        "Update available",
+        `A newer airports data bundle (${result.remoteManifest.version}) is available. Download it now?`,
+        [
+          { text: "Not now", style: "cancel" },
+          { text: "Download", onPress: () => applyAirportsUpdate(result) },
+        ]
+      );
+    } catch (err) {
+      Alert.alert("Couldn't check for updates", String(err instanceof Error ? err.message : err));
+    } finally {
+      setCheckingAirports(false);
+    }
+  }, [airportsDb, applyAirportsUpdate]);
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.sectionLabel}>Appearance</Text>
       <View style={styles.segmentRow}>
         {APPEARANCE_OPTIONS.map((opt) => (
@@ -31,6 +187,11 @@ export default function SettingsScreen() {
           </Pressable>
         ))}
       </View>
+      {appearance === "night" ? (
+        <Text style={styles.helperText}>
+          All-red display to help preserve your night vision in a dark cockpit.
+        </Text>
+      ) : null}
 
       <Text style={styles.sectionLabel}>Text Size</Text>
       <View style={styles.segmentRow}>
@@ -53,13 +214,51 @@ export default function SettingsScreen() {
           No person may operate an aircraft in a careless or reckless manner so as to endanger the life or property of another.
         </Text>
       </View>
-    </View>
+
+      <Text style={styles.sectionLabel}>Content</Text>
+      <View style={styles.contentCard}>
+        <Text style={styles.versionText}>
+          {version ? `Content built ${new Date(version.builtAt).toLocaleDateString()}` : "Loading content info…"}
+        </Text>
+        <Pressable
+          onPress={handleCheckForUpdates}
+          disabled={checking || updating}
+          style={({ pressed }) => [styles.updateButton, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.updateButtonText}>
+            {updating ? "Updating…" : checking ? "Checking…" : "Check for Updates"}
+          </Text>
+        </Pressable>
+      </View>
+
+      <Text style={styles.sectionLabel}>Airports Data</Text>
+      <View style={styles.contentCard}>
+        <Text style={styles.versionText}>
+          {airportsVersion
+            ? `Airport/procedure data built ${new Date(airportsVersion.builtAt).toLocaleDateString()}`
+            : "Loading airport data info…"}
+        </Text>
+        <Text style={styles.helperText}>
+          Runways, frequencies, and SID/STAR/approach names for US airports (FAA CIFP + OurAirports).
+        </Text>
+        <Pressable
+          onPress={handleCheckForAirportsUpdates}
+          disabled={!airportsDb || checkingAirports || updatingAirports}
+          style={({ pressed }) => [styles.updateButton, { marginTop: spacing(1) }, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.updateButtonText}>
+            {updatingAirports ? "Updating…" : checkingAirports ? "Checking…" : "Check for Updates"}
+          </Text>
+        </Pressable>
+      </View>
+    </ScrollView>
   );
 }
 
 function makeStyles(colors: ThemeColors, spacing: (n: number) => number) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background, padding: spacing(2.5) },
+    container: { flex: 1, backgroundColor: colors.background },
+    content: { padding: spacing(2.5), paddingBottom: spacing(4) },
     sectionLabel: {
       fontSize: 13,
       fontWeight: "700",
@@ -89,5 +288,16 @@ function makeStyles(colors: ThemeColors, spacing: (n: number) => number) {
     },
     previewLabel: { fontSize: 12, color: colors.textMuted, marginBottom: spacing(1) },
     previewBody: { color: colors.text, lineHeight: 26 },
+    helperText: { fontSize: 12, color: colors.textMuted, marginTop: spacing(1), lineHeight: 16 },
+    contentCard: {
+      padding: spacing(2),
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    versionText: { fontSize: 12, color: colors.textMuted, marginBottom: spacing(1) },
+    updateButton: { backgroundColor: colors.primary, borderRadius: 10, paddingVertical: spacing(1.5), alignItems: "center" },
+    updateButtonText: { color: "#fff", fontWeight: "700", fontSize: 15 },
   });
 }

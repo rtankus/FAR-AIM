@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type LayoutChangeEvent } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import type { Section } from "../../content/types";
 import { tokenizeBody } from "../../content/tokenize";
@@ -59,6 +59,11 @@ export function SectionDetailView({
   const [drawMode, setDrawMode] = useState(false);
   const [penColor, setPenColor] = useState(PEN_COLORS[0]);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const [findMode, setFindMode] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [currentMatch, setCurrentMatch] = useState(0);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const contentHeightRef = useRef(0);
 
   const refreshHighlights = useCallback(async () => {
     setHighlights(await listHighlightsForSection(userDb, id));
@@ -74,6 +79,8 @@ export function SectionDetailView({
     setAnnotateMode(null);
     setPendingStart(null);
     setDrawMode(false);
+    setFindMode(false);
+    setFindQuery("");
     (async () => {
       const s = await getSection(db, id);
       if (cancelled || !s) return;
@@ -131,6 +138,41 @@ export function SectionDetailView({
     setCanvasSize({ width, height });
   }, []);
 
+  // Character offsets of every match of findQuery within the body — this is
+  // a "find in this document" search over the single open section, distinct
+  // from the app-wide/part-wide search bars on the Parts and Sections list
+  // screens.
+  const findMatches = useMemo(() => {
+    const q = findQuery.trim().toLowerCase();
+    if (!section || q.length < 2) return [];
+    const body = section.body.toLowerCase();
+    const offsets: number[] = [];
+    let from = 0;
+    for (let found = body.indexOf(q, from); found !== -1; found = body.indexOf(q, from)) {
+      offsets.push(found);
+      from = found + q.length;
+    }
+    return offsets;
+  }, [section, findQuery]);
+
+  const safeMatchIndex = findMatches.length ? currentMatch % findMatches.length : 0;
+
+  useEffect(() => {
+    if (!findMode || findMatches.length === 0 || !section) return;
+    // Approximate: assumes the match's fraction of the way through the body
+    // text lines up with the same fraction of the way down the rendered
+    // content. Good enough to bring a match into view without needing exact
+    // text-layout measurement.
+    const fraction = findMatches[safeMatchIndex] / section.body.length;
+    scrollViewRef.current?.scrollTo({ y: fraction * contentHeightRef.current, animated: true });
+  }, [findMode, findMatches, safeMatchIndex, section]);
+
+  const goToNextMatch = useCallback(() => setCurrentMatch((i) => i + 1), []);
+  const goToPrevMatch = useCallback(
+    () => setCurrentMatch((i) => (findMatches.length ? i - 1 + findMatches.length : i)),
+    [findMatches.length]
+  );
+
   const handleToggleBookmark = useCallback(async () => {
     const nowBookmarked = await toggleBookmark(userDb, id);
     setBookmarked(nowBookmarked);
@@ -158,6 +200,20 @@ export function SectionDetailView({
     },
     [pendingStart, annotateMode, userDb, id, refreshHighlights]
   );
+
+  const currentMatchSnippet = useMemo(() => {
+    if (!section || findMatches.length === 0) return null;
+    const offset = findMatches[safeMatchIndex];
+    const len = findQuery.trim().length;
+    const CONTEXT = 40;
+    const start = Math.max(0, offset - CONTEXT);
+    const end = Math.min(section.body.length, offset + len + CONTEXT);
+    return {
+      before: (start > 0 ? "…" : "") + section.body.slice(start, offset),
+      match: section.body.slice(offset, offset + len),
+      after: section.body.slice(offset + len, end) + (end < section.body.length ? "…" : ""),
+    };
+  }, [section, findMatches, safeMatchIndex, findQuery]);
 
   const quotedTextFor = useCallback(
     (start: number, end: number) => {
@@ -204,7 +260,14 @@ export function SectionDetailView({
 
   return (
     <View style={styles.screen}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        onContentSizeChange={(_, height) => {
+          contentHeightRef.current = height;
+        }}
+      >
         <View style={styles.pageArea} onLayout={handleContentLayout}>
           <Text style={styles.path}>{section.path}</Text>
           <Text style={styles.title} selectable>
@@ -261,6 +324,43 @@ export function SectionDetailView({
           </Text>
         )}
 
+        {findMode && (
+          <View style={styles.findBar}>
+            <TextInput
+              value={findQuery}
+              onChangeText={(t) => {
+                setFindQuery(t);
+                setCurrentMatch(0);
+              }}
+              placeholder="Find in this document"
+              placeholderTextColor={colors.textMuted}
+              style={styles.findInput}
+              autoFocus
+            />
+            {findQuery.trim().length >= 2 && (
+              <View style={styles.findControls}>
+                <Text style={styles.findCount}>
+                  {findMatches.length ? `${safeMatchIndex + 1} of ${findMatches.length}` : "No matches"}
+                </Text>
+                <View style={{ flex: 1 }} />
+                <Pressable onPress={goToPrevMatch} disabled={!findMatches.length} hitSlop={8}>
+                  <Text style={[styles.findNav, !findMatches.length && styles.findNavDisabled]}>‹</Text>
+                </Pressable>
+                <Pressable onPress={goToNextMatch} disabled={!findMatches.length} hitSlop={8}>
+                  <Text style={[styles.findNav, !findMatches.length && styles.findNavDisabled]}>›</Text>
+                </Pressable>
+              </View>
+            )}
+            {currentMatchSnippet && (
+              <Text style={styles.findSnippet} numberOfLines={2}>
+                {currentMatchSnippet.before}
+                <Text style={styles.findSnippetMatch}>{currentMatchSnippet.match}</Text>
+                {currentMatchSnippet.after}
+              </Text>
+            )}
+          </View>
+        )}
+
         {drawMode && (
           <View style={styles.penBar}>
             {PEN_COLORS.map((c) => (
@@ -294,6 +394,7 @@ export function SectionDetailView({
               setAnnotateMode((m) => (m === "highlight" ? null : "highlight"));
               setPendingStart(null);
               setDrawMode(false);
+              setFindMode(false);
             }}
             style={({ pressed }) => [
               styles.toolbarButton,
@@ -310,6 +411,7 @@ export function SectionDetailView({
               setAnnotateMode((m) => (m === "note" ? null : "note"));
               setPendingStart(null);
               setDrawMode(false);
+              setFindMode(false);
             }}
             style={({ pressed }) => [
               styles.toolbarButton,
@@ -326,11 +428,25 @@ export function SectionDetailView({
               setDrawMode((d) => !d);
               setAnnotateMode(null);
               setPendingStart(null);
+              setFindMode(false);
             }}
             style={({ pressed }) => [styles.toolbarButton, drawMode && styles.toolbarButtonActive, pressed && { opacity: 0.7 }]}
           >
             <Text style={[styles.toolbarIcon, drawMode && styles.toolbarIconActive]}>🖊</Text>
             <Text style={[styles.toolbarLabel, drawMode && styles.toolbarLabelActive]}>Draw</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => {
+              setFindMode((f) => !f);
+              setAnnotateMode(null);
+              setPendingStart(null);
+              setDrawMode(false);
+            }}
+            style={({ pressed }) => [styles.toolbarButton, findMode && styles.toolbarButtonActive, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={[styles.toolbarIcon, findMode && styles.toolbarIconActive]}>🔍</Text>
+            <Text style={[styles.toolbarLabel, findMode && styles.toolbarLabelActive]}>Find</Text>
           </Pressable>
         </View>
       </View>
@@ -407,6 +523,23 @@ function makeStyles(colors: ThemeColors, spacing: (n: number) => number, fontSca
     swatchSelected: { borderColor: colors.text },
     penBarButtonText: { color: colors.primary, fontWeight: "700", marginLeft: spacing(1.5), fontSize: 15 * fontScale },
     clearText: { color: colors.danger },
+    findBar: { padding: spacing(1.25), backgroundColor: colors.surface },
+    findInput: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      paddingHorizontal: spacing(1.25),
+      paddingVertical: spacing(1),
+      fontSize: 15 * fontScale,
+      color: colors.text,
+      backgroundColor: colors.background,
+    },
+    findControls: { flexDirection: "row", alignItems: "center", marginTop: spacing(1) },
+    findCount: { fontSize: 13 * fontScale, color: colors.textMuted },
+    findNav: { fontSize: 24 * fontScale, color: colors.primary, fontWeight: "700", paddingHorizontal: spacing(1) },
+    findNavDisabled: { color: colors.border },
+    findSnippet: { fontSize: 13 * fontScale, color: colors.textMuted, marginTop: spacing(1) },
+    findSnippetMatch: { color: colors.text, fontWeight: "700", backgroundColor: "#FFF3B0" },
     bottomPanel: {
       backgroundColor: colors.background,
       borderTopWidth: StyleSheet.hairlineWidth,

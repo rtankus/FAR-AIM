@@ -27,7 +27,13 @@
     },
     "plugins": [
       "expo-sqlite",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Used to find weather (METARs, TAFs, AIRMETs/SIGMETs, PIREPs) near your current position."
+        }
+      ]
     ],
     "extra": {
       "eas": {

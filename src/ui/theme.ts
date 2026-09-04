@@ -39,6 +39,23 @@ export const darkColors: ThemeColors = {
   danger: "#FF6E5F",
 };
 
+// All-red-on-black, for preserving night vision in a dark cockpit — every
+// color here (including what would normally be blue/green/orange accents)
+// stays within the red family on purpose, just varying in shade/saturation
+// for contrast, rather than hue.
+export const nightColors: ThemeColors = {
+  background: "#000000",
+  surface: "#1A0000",
+  border: "#4D0000",
+  text: "#FF3B30",
+  textMuted: "#992B24",
+  primary: "#FF3B30",
+  farBadge: "#B23A2E",
+  aimBadge: "#992B24",
+  acBadge: "#802420",
+  danger: "#FF6259",
+};
+
 export const FONT_SCALES = {
   small: 0.88,
   default: 1,

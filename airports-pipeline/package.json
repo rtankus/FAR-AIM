@@ -1,0 +1,16 @@
+{
+  "name": "far-aim-airports-pipeline",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fetches US airport/runway/frequency/navaid data (OurAirports) and SID/STAR/approach names (FAA CIFP) and builds the offline SQLite bundle + update manifest consumed by the app.",
+  "scripts": {
+    "fetch:ourairports": "node scripts/fetch-ourairports.mjs",
+    "fetch:cifp": "node scripts/fetch-cifp.mjs",
+    "build:db": "node scripts/build-db.mjs",
+    "build": "npm run fetch:ourairports && npm run fetch:cifp && npm run build:db"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0"
+  }
+}

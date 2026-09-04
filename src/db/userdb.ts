@@ -17,6 +17,21 @@ export interface Drawing {
   created_at: number;
 }
 
+export interface TcdsDocument {
+  id: string;
+  label: string;
+  source_url: string;
+  /**
+   * Path to the saved PDF, relative to the Documents directory (e.g.
+   * "tcds/1234.pdf") — NOT an absolute file:// URI. The sandbox container's
+   * absolute path changes across app reinstalls, so an absolute path saved
+   * here would go stale. Resolve with resolveTcdsFile() from db/tcdsFiles.
+   */
+  file_path: string;
+  file_size: number;
+  saved_at: number;
+}
+
 export interface Highlight {
   id: string;
   section_id: string;
@@ -63,6 +78,40 @@ export async function initUserDb(userDb: SQLiteDatabase): Promise<void> {
     CREATE TABLE IF NOT EXISTS meta (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS tcds_documents (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      source_url TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_size INTEGER NOT NULL,
+      saved_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS weather_cache (
+      key TEXT PRIMARY KEY,
+      payload TEXT NOT NULL,
+      fetched_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS rulemaking_cache (
+      key TEXT PRIMARY KEY,
+      payload TEXT NOT NULL,
+      fetched_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS tfr_cache (
+      key TEXT PRIMARY KEY,
+      payload TEXT NOT NULL,
+      fetched_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS perf_profiles (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
     );
   `);
 }
@@ -124,6 +173,24 @@ export async function getSetting(userDb: SQLiteDatabase, key: string): Promise<s
 
 export async function setSetting(userDb: SQLiteDatabase, key: string, value: string): Promise<void> {
   await userDb.runAsync(`INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`, [key, value]);
+}
+
+const INSTALL_DATE_KEY = "install_date";
+
+/**
+ * The timestamp (ms) of this install's first launch, persisted in the user
+ * db the first time it's asked for. Because this db lives in the app's own
+ * sandboxed storage, a reinstall wipes it along with everything else — so
+ * "first time this key is read" doubles as "since this install", with no
+ * separate reinstall detection needed. Used to drive the free-provisioning
+ * 7-day expiry countdown (see useInstallExpiry).
+ */
+export async function getOrCreateInstallDate(userDb: SQLiteDatabase): Promise<number> {
+  const existing = await getSetting(userDb, INSTALL_DATE_KEY);
+  if (existing) return Number(existing);
+  const now = Date.now();
+  await setSetting(userDb, INSTALL_DATE_KEY, String(now));
+  return now;
 }
 
 export async function isBookmarked(userDb: SQLiteDatabase, sectionId: string): Promise<boolean> {
@@ -270,6 +337,154 @@ export async function deleteDrawing(userDb: SQLiteDatabase, id: string): Promise
 
 export async function clearDrawingsForSection(userDb: SQLiteDatabase, sectionId: string): Promise<void> {
   await userDb.runAsync(`DELETE FROM drawings WHERE section_id = ?`, [sectionId]);
+}
+
+/** Saved TCDS PDFs, most-recently-saved first. */
+export async function listTcdsDocuments(userDb: SQLiteDatabase): Promise<TcdsDocument[]> {
+  return userDb.getAllAsync<TcdsDocument>(`SELECT * FROM tcds_documents ORDER BY saved_at DESC`);
+}
+
+export async function addTcdsDocument(
+  userDb: SQLiteDatabase,
+  params: { label: string; sourceUrl: string; filePath: string; fileSize: number }
+): Promise<TcdsDocument> {
+  const id = `tcds:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+  const now = Date.now();
+  await userDb.runAsync(
+    `INSERT INTO tcds_documents (id, label, source_url, file_path, file_size, saved_at) VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, params.label, params.sourceUrl, params.filePath, params.fileSize, now]
+  );
+  return {
+    id,
+    label: params.label,
+    source_url: params.sourceUrl,
+    file_path: params.filePath,
+    file_size: params.fileSize,
+    saved_at: now,
+  };
+}
+
+export async function getTcdsDocument(userDb: SQLiteDatabase, id: string): Promise<TcdsDocument | null> {
+  const row = await userDb.getFirstAsync<TcdsDocument>(`SELECT * FROM tcds_documents WHERE id = ?`, [id]);
+  return row ?? null;
+}
+
+export async function deleteTcdsDocument(userDb: SQLiteDatabase, id: string): Promise<void> {
+  await userDb.runAsync(`DELETE FROM tcds_documents WHERE id = ?`, [id]);
+}
+
+/**
+ * Read-through cache for weather lookups. `key` identifies the query (e.g.
+ * `metar:KJFK` or `nearby-metar:40.64,-73.78,50`) — see src/weather/cache.ts,
+ * which is what everything except this file should call.
+ */
+export async function getWeatherCacheEntry(
+  userDb: SQLiteDatabase,
+  key: string
+): Promise<{ payload: string; fetchedAt: number } | null> {
+  const row = await userDb.getFirstAsync<{ payload: string; fetched_at: number }>(
+    `SELECT payload, fetched_at FROM weather_cache WHERE key = ?`,
+    [key]
+  );
+  return row ? { payload: row.payload, fetchedAt: row.fetched_at } : null;
+}
+
+export async function setWeatherCacheEntry(
+  userDb: SQLiteDatabase,
+  key: string,
+  payload: string
+): Promise<void> {
+  await userDb.runAsync(
+    `INSERT OR REPLACE INTO weather_cache (key, payload, fetched_at) VALUES (?, ?, ?)`,
+    [key, payload, Date.now()]
+  );
+}
+
+/**
+ * Read-through cache for FAA rulemaking lookups — see
+ * src/rulemaking/cache.ts, which is what everything except this file should
+ * call.
+ */
+export async function getRulemakingCacheEntry(
+  userDb: SQLiteDatabase,
+  key: string
+): Promise<{ payload: string; fetchedAt: number } | null> {
+  const row = await userDb.getFirstAsync<{ payload: string; fetched_at: number }>(
+    `SELECT payload, fetched_at FROM rulemaking_cache WHERE key = ?`,
+    [key]
+  );
+  return row ? { payload: row.payload, fetchedAt: row.fetched_at } : null;
+}
+
+export async function setRulemakingCacheEntry(
+  userDb: SQLiteDatabase,
+  key: string,
+  payload: string
+): Promise<void> {
+  await userDb.runAsync(
+    `INSERT OR REPLACE INTO rulemaking_cache (key, payload, fetched_at) VALUES (?, ?, ?)`,
+    [key, payload, Date.now()]
+  );
+}
+
+/**
+ * Read-through cache for the active-TFRs list — see src/tfr/cache.ts, which
+ * is what everything except this file should call.
+ */
+export async function getTfrCacheEntry(
+  userDb: SQLiteDatabase,
+  key: string
+): Promise<{ payload: string; fetchedAt: number } | null> {
+  const row = await userDb.getFirstAsync<{ payload: string; fetched_at: number }>(
+    `SELECT payload, fetched_at FROM tfr_cache WHERE key = ?`,
+    [key]
+  );
+  return row ? { payload: row.payload, fetchedAt: row.fetched_at } : null;
+}
+
+export async function setTfrCacheEntry(userDb: SQLiteDatabase, key: string, payload: string): Promise<void> {
+  await userDb.runAsync(`INSERT OR REPLACE INTO tfr_cache (key, payload, fetched_at) VALUES (?, ?, ?)`, [
+    key,
+    payload,
+    Date.now(),
+  ]);
+}
+
+/**
+ * Saved aircraft weight-and-balance/performance profiles — see
+ * src/performance/store.ts, which is what everything except this file
+ * should call.
+ */
+export async function listPerfProfileRows(
+  userDb: SQLiteDatabase
+): Promise<{ id: string; payload: string }[]> {
+  return userDb.getAllAsync<{ id: string; payload: string }>(
+    `SELECT id, payload FROM perf_profiles ORDER BY name COLLATE NOCASE`
+  );
+}
+
+export async function getPerfProfileRow(userDb: SQLiteDatabase, id: string): Promise<string | null> {
+  const row = await userDb.getFirstAsync<{ payload: string }>(
+    `SELECT payload FROM perf_profiles WHERE id = ?`,
+    [id]
+  );
+  return row?.payload ?? null;
+}
+
+export async function setPerfProfileRow(
+  userDb: SQLiteDatabase,
+  id: string,
+  name: string,
+  payload: string
+): Promise<void> {
+  await userDb.runAsync(
+    `INSERT OR REPLACE INTO perf_profiles (id, name, payload, updated_at) VALUES (?, ?, ?, ?)`,
+    [id, name, payload, Date.now()]
+  );
+}
+
+export async function deletePerfProfileRow(userDb: SQLiteDatabase, id: string): Promise<void> {
+  await userDb.runAsync(`DELETE FROM perf_profiles WHERE id = ?`, [id]);
 }
 
 /** All section ids that have at least one note-bearing highlight, most-recently-updated first. */

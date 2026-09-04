@@ -42,3 +42,6 @@ yarn-error.*
 
 # content pipeline intermediates (regenerate with `npm run build` in content-pipeline/)
 content-pipeline/output/
+
+# airports pipeline intermediates (regenerate with `npm run build` in airports-pipeline/)
+airports-pipeline/output/

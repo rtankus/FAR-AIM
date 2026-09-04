@@ -36,10 +36,16 @@ export async function getSectionsByIds(db: SQLiteDatabase, ids: string[]): Promi
   return ids.map((id) => byId.get(id)).filter((s): s is Section => s != null);
 }
 
+/**
+ * Full-text search, optionally scoped to a source (e.g. just AC) and/or a
+ * part within it (e.g. just Part 61) — used to let the search bar on the
+ * Parts/Sections list screens search only what's currently browsed into,
+ * rather than always searching everything.
+ */
 export async function searchSections(
   db: SQLiteDatabase,
   query: string,
-  limit = 50
+  opts: { source?: Source; part?: string; limit?: number } = {}
 ): Promise<Section[]> {
   const trimmed = query.trim();
   if (!trimmed) return [];
@@ -49,12 +55,45 @@ export async function searchSections(
     .split(/\s+/)
     .map((term) => `"${term.replace(/"/g, '""')}"*`)
     .join(" OR ");
+
+  const conditions = ["sections_fts MATCH ?"];
+  const params: (string | number)[] = [ftsQuery];
+  if (opts.source) {
+    conditions.push("s.source = ?");
+    params.push(opts.source);
+  }
+  if (opts.part) {
+    conditions.push("s.part = ?");
+    params.push(opts.part);
+  }
+  params.push(opts.limit ?? 50);
+
   return db.getAllAsync<Section>(
     `SELECT s.* FROM sections_fts f
      JOIN sections s ON s.rowid = f.rowid
-     WHERE sections_fts MATCH ?
+     WHERE ${conditions.join(" AND ")}
      ORDER BY rank LIMIT ?`,
-    [ftsQuery, limit]
+    params
+  );
+}
+
+export async function countSectionsBySource(db: SQLiteDatabase, source: Source): Promise<number> {
+  const row = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) as count FROM sections WHERE source = ?`,
+    [source]
+  );
+  return row?.count ?? 0;
+}
+
+/** The Nth section for a source, in the same stable order used for browsing. */
+export async function getSectionAtOffset(
+  db: SQLiteDatabase,
+  source: Source,
+  offset: number
+): Promise<Section | null> {
+  return db.getFirstAsync<Section>(
+    `SELECT * FROM sections WHERE source = ? ORDER BY sort_order LIMIT 1 OFFSET ?`,
+    [source, offset]
   );
 }
 

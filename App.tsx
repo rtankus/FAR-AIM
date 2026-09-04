@@ -5,8 +5,11 @@ import { NavigationContainer, DarkTheme, DefaultTheme } from "@react-navigation/
 import { SQLiteProvider } from "expo-sqlite";
 import { StatusBar } from "expo-status-bar";
 import RootNavigator from "./src/ui/navigation/RootNavigator";
+import InstallExpiryBar from "./src/ui/components/InstallExpiryBar";
 import { ReloadContext } from "./src/ui/ReloadContext";
 import { UserDbProvider } from "./src/ui/UserDbContext";
+import { AirportsDbProvider } from "./src/ui/AirportsDbContext";
+import { useAutoUpdateAirportsData } from "./src/ui/hooks/useAutoUpdateAirportsData";
 import { ThemeProvider, useTheme } from "./src/ui/ThemeContext";
 import { DB_NAME, bundledDbAsset } from "./src/db/database";
 import { theme } from "./src/ui/theme";
@@ -28,9 +31,11 @@ export default function App() {
             useSuspense
           >
             <UserDbProvider>
-              <ThemeProvider>
-                <AppShell />
-              </ThemeProvider>
+              <AirportsDbProvider>
+                <ThemeProvider>
+                  <AppShell />
+                </ThemeProvider>
+              </AirportsDbProvider>
             </UserDbProvider>
           </SQLiteProvider>
         </Suspense>
@@ -40,6 +45,7 @@ export default function App() {
 }
 
 function AppShell() {
+  useAutoUpdateAirportsData();
   const { scheme, colors } = useTheme();
   const navTheme = scheme === "dark" ? DarkTheme : DefaultTheme;
   return (
@@ -50,6 +56,7 @@ function AppShell() {
       }}
     >
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+      <InstallExpiryBar />
       <RootNavigator />
     </NavigationContainer>
   );
