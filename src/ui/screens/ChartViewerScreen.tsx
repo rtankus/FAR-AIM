@@ -26,7 +26,9 @@ export default function ChartViewerScreen({ route, navigation }: Props) {
   }, [navigation, chartName]);
 
   useEffect(() => {
-    getSavedChart(userDb, airportIdent, pdfUrl).then(setSaved);
+    getSavedChart(userDb, airportIdent, pdfUrl)
+      .then(setSaved)
+      .catch(() => setSaved(null)); // treat "couldn't check" as "not saved" rather than an infinite spinner
   }, [userDb, airportIdent, pdfUrl]);
 
   const localUri = saved && resolveChartFile(saved.file_path).exists ? resolveChartFile(saved.file_path).uri : null;

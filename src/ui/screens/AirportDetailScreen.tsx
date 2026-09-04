@@ -30,27 +30,39 @@ export default function AirportDetailScreen({ route, navigation }: Props) {
   const [frequencies, setFrequencies] = useState<Frequency[]>([]);
   const [charts, setCharts] = useState<ProcedureChart[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!airportsDb) return;
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
     Promise.all([
       getAirport(airportsDb, ident),
       getRunways(airportsDb, ident),
       getProcedures(airportsDb, ident),
       getFrequencies(airportsDb, ident),
       getCharts(airportsDb, ident),
-    ]).then(([a, r, p, f, c]) => {
-      if (cancelled) return;
-      setAirport(a);
-      setRunways(r);
-      setProcedures(p);
-      setFrequencies(f);
-      setCharts(c);
-      setLoading(false);
-      navigation.setOptions({ title: a?.ident ?? ident });
-    });
+    ])
+      .then(([a, r, p, f, c]) => {
+        if (cancelled) return;
+        setAirport(a);
+        setRunways(r);
+        setProcedures(p);
+        setFrequencies(f);
+        setCharts(c);
+        setLoading(false);
+        navigation.setOptions({ title: a?.ident ?? ident });
+      })
+      .catch((err) => {
+        // Without this, a query that throws (e.g. a stale on-device
+        // airports.db missing a table this screen expects) leaves `loading`
+        // true forever — an infinite spinner with no visible error,
+        // especially bad in a Release build with no red-screen overlay.
+        if (cancelled) return;
+        setLoadError(String(err instanceof Error ? err.message : err));
+        setLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -70,6 +82,14 @@ export default function AirportDetailScreen({ route, navigation }: Props) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.empty}>Couldn't load {ident}: {loadError}</Text>
       </View>
     );
   }

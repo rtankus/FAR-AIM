@@ -137,14 +137,11 @@ export default function WeightAndBalanceScreen({ route }: Props) {
     landingObstacle.row2Col2.value,
   ]);
 
-  if (!profile) return null;
-  const u = profile.weightUnit;
-
   // Formula strings, built from the same numbers already fed into
   // computeWeightAndBalance — so verifying these against a POH/spreadsheet
   // means confirming the same inputs produce the same intermediate figures.
   const formulas = useMemo(() => {
-    if (!result) return null;
+    if (!result || !profile) return null;
     const bewMoment = profile.bewWeight * profile.bewArm;
     const frontMoment = front.value * profile.frontArm;
     const rearMoment = rear.value * profile.rearArm;
@@ -152,6 +149,7 @@ export default function WeightAndBalanceScreen({ route }: Props) {
     const fuelWeight = fuelGal.value * profile.fuelWeightPerGal;
     const taxiFuelWeight = profile.taxiFuelGal * profile.fuelWeightPerGal;
     const fuelBurnWeight = fuelBurn.value * flightHours.value * profile.fuelWeightPerGal;
+    const u = profile.weightUnit;
 
     return {
       zfwWeight: `BEW ${r(profile.bewWeight)} + Front ${r(front.value)} + Rear ${r(rear.value)} + Baggage ${r(baggage.value)} = ${r(result.zfw.weight)} ${u}`,
@@ -174,6 +172,9 @@ export default function WeightAndBalanceScreen({ route }: Props) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result, profile, front.value, rear.value, baggage.value, fuelGal.value, fuelBurn.value, flightHours.value, departure, destination]);
+
+  if (!profile) return null;
+  const u = profile.weightUnit;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">

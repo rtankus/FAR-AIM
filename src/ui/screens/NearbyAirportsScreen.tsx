@@ -46,9 +46,13 @@ export default function NearbyAirportsScreen({ navigation }: Props) {
       return;
     }
     let cancelled = false;
-    searchAirportsByIdent(airportsDb, query).then((results) => {
-      if (!cancelled) setSearchResults(results);
-    });
+    searchAirportsByIdent(airportsDb, query)
+      .then((results) => {
+        if (!cancelled) setSearchResults(results);
+      })
+      .catch(() => {
+        if (!cancelled) setSearchResults([]);
+      });
     return () => {
       cancelled = true;
     };

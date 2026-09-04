@@ -19,6 +19,8 @@ export const AIRPORTS_DB_NAME = "airports.db";
 // re-download of a much bigger file on every content refresh.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 export const bundledAirportsDbAsset = require("../../assets/airports/airports.db");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+export const bundledAirportsManifest: AirportsManifest = require("../../assets/airports/manifest.json");
 
 // Mirrors CONTENT_MANIFEST_URL's shape, one path segment over — published by
 // .github/workflows/update-airports.yml to a rolling "airports-latest"
@@ -27,6 +29,39 @@ export const AIRPORTS_MANIFEST_URL = CONTENT_MANIFEST_URL.replace("content-lates
 
 function dbFile(): File {
   return new File(SQLite.defaultDatabaseDirectory, AIRPORTS_DB_NAME);
+}
+
+/**
+ * Opens the already-installed file just long enough to check its
+ * data_version against the version bundled with this build of the app.
+ * Returns false (triggering a reinstall from the bundled asset) for
+ * anything that isn't a clean "yes, current or newer" — a missing/garbled
+ * meta table, an old schema missing expected tables, or a genuinely older
+ * version all fail closed rather than risk queries hitting a schema they
+ * don't expect.
+ */
+async function installedVersionIsCurrent(target: File): Promise<boolean> {
+  if (!target.exists) return false;
+  let probe: SQLite.SQLiteDatabase | null = null;
+  try {
+    // Same file `target` already points at (AIRPORTS_DB_NAME, in
+    // SQLite.defaultDatabaseDirectory) — opened by name, as expo-sqlite
+    // expects, not by target.uri.
+    probe = await SQLite.openDatabaseAsync(AIRPORTS_DB_NAME);
+    const installed = await getInstalledAirportsVersion(probe);
+    // >= (not >): an OTA update (see checkForAirportsUpdate) can legitimately
+    // install something newer than what's bundled with this build — don't
+    // stomp that back down to the bundled version on every launch.
+    return !!installed && installed.version >= bundledAirportsManifest.version;
+  } catch {
+    return false;
+  } finally {
+    try {
+      await probe?.closeAsync();
+    } catch {
+      // ignore
+    }
+  }
 }
 
 /**
@@ -44,14 +79,25 @@ function dbFile(): File {
  * the temp file) can easily win the race against a 26MB copy and end up
  * looking at a zero-byte or partially-written file. This bit us for real
  * once already — every `.copy()` call below is deliberately awaited.
+ *
+ * Also checks the *schema version*, not just that a file happens to exist:
+ * on a real device (unlike our simulator testing, where `simctl uninstall`
+ * wipes the sandbox every time) reinstalling/rebuilding the app over an
+ * existing install does NOT clear Documents — a self-consistent, correctly-
+ * sized airports.db can still be a much older build lacking a table this
+ * version of the app queries (e.g. procedure_legs, procedure_charts), which
+ * throws deep inside a screen's data-loading effect. If nothing catches
+ * that (easy to miss — see AirportDetailScreen), it just looks like an
+ * infinite loading spinner, with no red-screen error in a Release build to
+ * point at why.
  */
 export async function ensureAirportsDbInstalled(): Promise<void> {
   const target = dbFile();
-  if (target.exists) {
-    // null means "couldn't determine size" (not "empty") — only a definite
-    // too-small number means this is a botched remnant worth redoing.
-    if (target.size == null || target.size >= MIN_VALID_DB_BYTES) return;
-    target.delete();
+  if (target.exists && target.size != null && target.size < MIN_VALID_DB_BYTES) {
+    target.delete(); // zero-byte/truncated remnant from an earlier botched install
+  }
+  if (target.exists && (await installedVersionIsCurrent(target))) {
+    return;
   }
 
   const asset = Asset.fromModule(bundledAirportsDbAsset);

@@ -99,6 +99,7 @@ export default function ProcedurePlateScreen({ route, navigation }: Props) {
   const [legs, setLegs] = useState<ProcedureLeg[]>([]);
   const [charts, setCharts] = useState<ProcedureChart[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -109,15 +110,21 @@ export default function ProcedurePlateScreen({ route, navigation }: Props) {
     if (!airportsDb) return;
     let cancelled = false;
     setLoading(true);
-    Promise.all([getProcedureLegs(airportsDb, airportIdent, type, name), getCharts(airportsDb, airportIdent)]).then(
-      ([legRows, chartRows]) => {
-        if (!cancelled) {
-          setLegs(legRows);
-          setCharts(chartRows);
-          setLoading(false);
-        }
-      }
-    );
+    setLoadError(null);
+    Promise.all([getProcedureLegs(airportsDb, airportIdent, type, name), getCharts(airportsDb, airportIdent)])
+      .then(([legRows, chartRows]) => {
+        if (cancelled) return;
+        setLegs(legRows);
+        setCharts(chartRows);
+        setLoading(false);
+      })
+      .catch((err) => {
+        // See AirportDetailScreen's identical comment — without this, a
+        // thrown query leaves `loading` true forever with no visible error.
+        if (cancelled) return;
+        setLoadError(String(err instanceof Error ? err.message : err));
+        setLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -143,6 +150,14 @@ export default function ProcedurePlateScreen({ route, navigation }: Props) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.empty}>Couldn't load this procedure: {loadError}</Text>
       </View>
     );
   }
