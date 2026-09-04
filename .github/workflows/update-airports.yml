@@ -1,0 +1,66 @@
+name: Refresh airports data
+
+on:
+  schedule:
+    # 1st of every month, 09:00 UTC. Roughly tracks the FAA's 28-day AIRAC
+    # cycle without needing to compute cycle dates here.
+    - cron: "0 9 1 * *"
+  workflow_dispatch: {} # lets you trigger a run manually from the Actions tab
+
+permissions:
+  contents: write # needed to commit the rebuilt bundle and publish a release
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: airports-pipeline/package-lock.json
+
+      - name: Install airports pipeline deps
+        working-directory: airports-pipeline
+        run: npm install
+
+      - name: Fetch FAA CIFP + OurAirports and build the SQLite bundle
+        working-directory: airports-pipeline
+        run: npm run build
+
+      - name: Check whether the data actually changed
+        id: diff
+        run: |
+          if git diff --quiet -- assets/airports/manifest.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit refreshed bundle back to the repo
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add assets/airports/airports.db assets/airports/manifest.json
+          git commit -m "airports: refresh data bundle $(date -u +%Y-%m-%d)"
+          git push
+
+      # Publishes assets/airports/airports.db + manifest.json to a single
+      # rolling release tag, so the app always has one stable URL to check:
+      #   https://github.com/<owner>/<repo>/releases/download/airports-latest/manifest.json
+      #   https://github.com/<owner>/<repo>/releases/download/airports-latest/airports.db
+      - name: Publish to the rolling "airports-latest" release
+        if: steps.diff.outputs.changed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: airports-latest
+          name: "Airports data (latest)"
+          body: "Auto-published by .github/workflows/update-airports.yml. Not a versioned release — this tag's assets are overwritten each run."
+          files: |
+            assets/airports/airports.db
+            assets/airports/manifest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
