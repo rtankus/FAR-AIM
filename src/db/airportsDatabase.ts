@@ -1,8 +1,14 @@
 import * as SQLite from "expo-sqlite";
-import { Directory, File, Paths } from "expo-file-system";
+import { File, Paths } from "expo-file-system";
 import { Asset } from "expo-asset";
 import { CONTENT_MANIFEST_URL } from "../config";
 import type { AirportsManifest } from "../airports/types";
+
+// A file smaller than this can't possibly be a real airports.db (the
+// smallest bundle ever shipped, name-only procedures with no leg data, was
+// ~5.8MB) — used to detect a zero-byte/truncated file left behind by an
+// interrupted copy, rather than trusting mere existence.
+const MIN_VALID_DB_BYTES = 1_000_000;
 
 export const AIRPORTS_DB_NAME = "airports.db";
 
@@ -29,14 +35,48 @@ function dbFile(): File {
  * for faraim.db, done by hand here so opening this second db doesn't require
  * nesting another <SQLiteProvider> (which would shadow useSQLiteContext()
  * for faraim.db elsewhere in the tree — see AirportsDbContext.tsx).
+ *
+ * IMPORTANT: `File.copy()` is an expo-file-system AsyncFunction (unlike
+ * `.delete()`/`.exists`, which are synchronous) — it must be awaited. Not
+ * awaiting it doesn't throw or warn; the JS call just returns immediately
+ * while the actual copy keeps running in the background, so a caller that
+ * charges ahead (checking the copied size, opening the SQLite db, deleting
+ * the temp file) can easily win the race against a 26MB copy and end up
+ * looking at a zero-byte or partially-written file. This bit us for real
+ * once already — every `.copy()` call below is deliberately awaited.
  */
 export async function ensureAirportsDbInstalled(): Promise<void> {
   const target = dbFile();
-  if (target.exists) return;
+  if (target.exists) {
+    // null means "couldn't determine size" (not "empty") — only a definite
+    // too-small number means this is a botched remnant worth redoing.
+    if (target.size == null || target.size >= MIN_VALID_DB_BYTES) return;
+    target.delete();
+  }
+
   const asset = Asset.fromModule(bundledAirportsDbAsset);
   await asset.downloadAsync();
   if (!asset.localUri) throw new Error("Bundled airports.db asset has no local URI after download.");
-  new File(asset.localUri).copy(target);
+
+  const tempFile = new File(Paths.cache, "airports-install.db");
+  if (tempFile.exists) tempFile.delete();
+  await new File(asset.localUri).copy(tempFile);
+  if (tempFile.size != null && tempFile.size < MIN_VALID_DB_BYTES) {
+    throw new Error(`Bundled airports.db asset copied incomplete (${tempFile.size} bytes) — asset download likely failed.`);
+  }
+  // copy() + delete() rather than move(): move()'ing onto an existing-named
+  // destination was observed leaving a stale `target` untouched instead of
+  // being overwritten by the freshly-copied content.
+  if (target.exists) target.delete();
+  await tempFile.copy(target);
+  // Best-effort cleanup — the copy already succeeded, so a failure to
+  // delete the now-redundant temp file (e.g. a concurrent caller already
+  // cleared it) shouldn't fail the whole install.
+  try {
+    if (tempFile.exists) tempFile.delete();
+  } catch {
+    // ignore
+  }
 }
 
 /** Reads the data_version/built_at rows out of the currently-open airports db. */
@@ -69,8 +109,15 @@ export async function checkForAirportsUpdate(db: SQLite.SQLiteDatabase): Promise
     getInstalledAirportsVersion(db),
     fetchRemoteAirportsManifest(),
   ]);
+  // `version` is an ISO-ish build timestamp (see airports-pipeline/build-db.mjs),
+  // so string comparison sorts chronologically. Comparing for *greater than*
+  // rather than mere inequality matters here specifically: the installed
+  // bundle can legitimately be newer than the last-published release (e.g. a
+  // fresh app build ships a bundle built after the airports-latest release
+  // was last published) — treating "different" as "remote wins" would have
+  // this silently downgrade a newer bundled db to an older published one.
   return {
-    updateAvailable: !installed || installed.version !== remoteManifest.version,
+    updateAvailable: !installed || remoteManifest.version > installed.version,
     installedVersion: installed?.version ?? null,
     remoteManifest,
   };
@@ -116,10 +163,18 @@ export async function applyDownloadedAirportsUpdate(tempFile: File): Promise<voi
     if (sidecar.exists) sidecar.delete();
   }
 
-  tempFile.move(new Directory(SQLite.defaultDatabaseDirectory));
-  // move() renames in place using the source filename, so rename to AIRPORTS_DB_NAME.
-  const movedFile = new File(SQLite.defaultDatabaseDirectory, "airports-update.db");
-  if (movedFile.exists) {
-    movedFile.move(target);
+  // copy() + delete() rather than move() — see ensureAirportsDbInstalled()'s
+  // comment: move()'ing onto an existing-named destination was observed to
+  // leave the destination untouched instead of overwriting it. copy() must
+  // be awaited (it's an AsyncFunction) or this races the caller reopening
+  // the db right after.
+  await tempFile.copy(target);
+  // Best-effort cleanup — the copy already succeeded, so a failure to
+  // delete the now-redundant temp file (e.g. a concurrent caller already
+  // cleared it) shouldn't fail the whole install/update.
+  try {
+    if (tempFile.exists) tempFile.delete();
+  } catch {
+    // ignore
   }
 }

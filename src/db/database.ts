@@ -1,5 +1,5 @@
 import * as SQLite from "expo-sqlite";
-import { Directory, File, Paths } from "expo-file-system";
+import { File, Paths } from "expo-file-system";
 import { CONTENT_MANIFEST_URL } from "../config";
 import type { ContentManifest } from "../content/types";
 
@@ -51,8 +51,14 @@ export async function checkForContentUpdate(
     getInstalledVersion(db),
     fetchRemoteManifest(),
   ]);
+  // `version` is an ISO-ish build timestamp (see content-pipeline/build-db.mjs),
+  // so string comparison sorts chronologically. Comparing for *greater than*
+  // rather than mere inequality matters: the installed bundle can
+  // legitimately be newer than the last-published release (a fresh app
+  // build ships a bundle built after content-latest was last published) —
+  // treating "different" as "remote wins" would silently downgrade it.
   return {
-    updateAvailable: !installed || installed.version !== remoteManifest.version,
+    updateAvailable: !installed || remoteManifest.version > installed.version,
     installedVersion: installed?.version ?? null,
     remoteManifest,
   };
@@ -88,6 +94,12 @@ export async function downloadContentUpdate(
  * The caller MUST close its existing SQLiteDatabase connection (db.closeAsync())
  * before calling this, and reopen (or remount <SQLiteProvider>) after it
  * settles — including on failure, since the old file may already be gone.
+ *
+ * IMPORTANT: `File.copy()` is an expo-file-system AsyncFunction — it must be
+ * awaited, or the JS call returns immediately while the copy keeps running
+ * in the background and a caller that reopens the db right after can end up
+ * looking at a zero-byte or partially-written file (this happened for real
+ * in the equivalent airports.db flow before every copy() here was awaited).
  */
 export async function applyDownloadedContentUpdate(tempFile: File): Promise<void> {
   const target = dbFile();
@@ -98,10 +110,15 @@ export async function applyDownloadedContentUpdate(tempFile: File): Promise<void
     if (sidecar.exists) sidecar.delete();
   }
 
-  tempFile.move(new Directory(SQLite.defaultDatabaseDirectory));
-  // move() renames in place using the source filename, so rename to DB_NAME.
-  const movedFile = new File(SQLite.defaultDatabaseDirectory, "faraim-update.db");
-  if (movedFile.exists) {
-    movedFile.move(target);
+  // copy() + delete() rather than move(): move()'ing onto an existing-named
+  // destination was observed to leave the destination untouched instead of
+  // overwriting it, rather than throwing — a silent no-op worse than a crash.
+  await tempFile.copy(target);
+  // Best-effort cleanup — the copy already succeeded, so a failure to
+  // delete the now-redundant temp file shouldn't fail the whole update.
+  try {
+    if (tempFile.exists) tempFile.delete();
+  } catch {
+    // ignore
   }
 }
