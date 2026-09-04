@@ -14,7 +14,7 @@ export default function AirportsDataFreshness({ style }: { style?: TextStyle }) 
   const builtAtMs = new Date(meta.builtAt).getTime();
   return (
     <Text style={style}>
-      Data as of {new Date(meta.builtAt).toLocaleDateString()} ({timeAgo(builtAtMs)}) · FAA CIFP + OurAirports
+      Data as of {new Date(meta.builtAt).toLocaleDateString()} ({timeAgo(builtAtMs)}) · FAA CIFP/d-TPP + OurAirports
     </Text>
   );
 }

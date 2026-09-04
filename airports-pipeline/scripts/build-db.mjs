@@ -20,7 +20,7 @@ async function loadJson(name) {
   return JSON.parse(await readFile(path.join(OUT_DIR, `${name}.json`), "utf-8"));
 }
 
-function buildDatabase({ airports, runways, frequencies, navaids, procedures, procedureLegs }) {
+function buildDatabase({ airports, runways, frequencies, navaids, procedures, procedureLegs, charts }) {
   try {
     unlinkSync(DB_PATH);
   } catch {
@@ -77,6 +77,18 @@ function buildDatabase({ airports, runways, frequencies, navaids, procedures, pr
     CREATE INDEX idx_legs_procedure ON procedure_legs(airport_ident, type, name, transition_ident, seq);
     CREATE INDEX idx_legs_fix ON procedure_legs(fix_ident);
 
+    -- Official FAA chart PDFs (approach/departure/arrival/airport diagram)
+    -- for the current AIRAC cycle — links only, not the PDFs themselves
+    -- (thousands of them, easily multiple GB). The app fetches a specific
+    -- chart on demand and can save it locally for offline viewing.
+    CREATE TABLE procedure_charts (
+      airport_ident TEXT NOT NULL,
+      chart_code TEXT NOT NULL,
+      chart_name TEXT NOT NULL,
+      pdf_url TEXT NOT NULL
+    );
+    CREATE INDEX idx_charts_airport ON procedure_charts(airport_ident);
+
     CREATE TABLE navaids (
       ident TEXT NOT NULL, name TEXT, type TEXT,
       lat REAL NOT NULL, lon REAL NOT NULL, freq_khz INTEGER
@@ -112,6 +124,10 @@ function buildDatabase({ airports, runways, frequencies, navaids, procedures, pr
        (airport_ident, type, name, route_type, transition_ident, seq, fix_ident, path_terminator, desc_code, alt_desc, alt1, alt2)
      VALUES (@airportIdent, @type, @name, @routeType, @transitionIdent, @seq, @fixIdent, @pathTerminator, @descCode, @altDesc, @alt1, @alt2)`
   );
+  const insertChart = db.prepare(
+    `INSERT INTO procedure_charts (airport_ident, chart_code, chart_name, pdf_url)
+     VALUES (@airportIdent, @chartCode, @chartName, @pdfUrl)`
+  );
   const insertNavaid = db.prepare(
     `INSERT INTO navaids (ident, name, type, lat, lon, freq_khz) VALUES (@ident, @name, @type, @lat, @lon, @freqKhz)`
   );
@@ -124,6 +140,7 @@ function buildDatabase({ airports, runways, frequencies, navaids, procedures, pr
     for (const r of runways) insertRunway.run(r);
     for (const p of procedures) insertProcedure.run(p);
     for (const l of procedureLegs) insertLeg.run(l);
+    for (const c of charts) insertChart.run(c);
     for (const n of navaids) insertNavaid.run(n);
     for (const f of frequencies) insertFrequency.run(f);
   });
@@ -136,13 +153,15 @@ async function main() {
   await mkdir(OUT_DIR, { recursive: true });
   await mkdir(APP_ASSETS_DIR, { recursive: true });
 
-  const [airports, runways, frequencies, navaids, procedures, procedureLegs] = await Promise.all([
+  const [airports, runways, frequencies, navaids, procedures, procedureLegs, charts, dtppCycle] = await Promise.all([
     loadJson("airports"),
     loadJson("runways"),
     loadJson("frequencies"),
     loadJson("navaids"),
     loadJson("procedures"),
     loadJson("procedure_legs"),
+    loadJson("charts"),
+    loadJson("dtpp_cycle"),
   ]);
 
   if (airports.length === 0) {
@@ -150,11 +169,12 @@ async function main() {
     process.exit(1);
   }
 
-  const db = buildDatabase({ airports, runways, frequencies, navaids, procedures, procedureLegs });
+  const db = buildDatabase({ airports, runways, frequencies, navaids, procedures, procedureLegs, charts });
 
   const version = new Date().toISOString().replace(/[:.]/g, "-");
   db.prepare(`INSERT INTO meta (key, value) VALUES ('data_version', ?)`).run(version);
   db.prepare(`INSERT INTO meta (key, value) VALUES ('built_at', ?)`).run(new Date().toISOString());
+  db.prepare(`INSERT INTO meta (key, value) VALUES ('dtpp_cycle', ?)`).run(dtppCycle.cycle);
   db.close();
 
   const dbBuffer = await readFile(DB_PATH);
@@ -169,6 +189,7 @@ async function main() {
     runwayCount: runways.length,
     procedureCount: procedures.length,
     procedureLegCount: procedureLegs.length,
+    chartCount: charts.length,
     navaidCount: navaids.length,
     frequencyCount: frequencies.length,
     // Published by .github/workflows/update-airports.yml to a rolling
@@ -183,7 +204,7 @@ async function main() {
 
   console.log(`\nBuilt ${DB_PATH}`);
   console.log(
-    `  ${airports.length} airports, ${runways.length} runways, ${procedures.length} procedures (${procedureLegs.length} legs), ${navaids.length} navaids, ${frequencies.length} frequencies`
+    `  ${airports.length} airports, ${runways.length} runways, ${procedures.length} procedures (${procedureLegs.length} legs), ${charts.length} chart PDFs, ${navaids.length} navaids, ${frequencies.length} frequencies`
   );
   console.log(`  version ${version}`);
   console.log(`Copied bundle into ${APP_ASSETS_DIR}`);

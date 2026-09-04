@@ -1,15 +1,62 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/types";
 import { useAirportsDb } from "../AirportsDbContext";
 import { useTheme } from "../ThemeContext";
 import type { ThemeColors } from "../theme";
-import { getProcedureLegs } from "../../airports/queries";
-import { PATH_TERMINATOR_LABEL, WAYPOINT_DESC_LABEL, type ProcedureLeg } from "../../airports/types";
+import { getCharts, getProcedureLegs } from "../../airports/queries";
+import { PATH_TERMINATOR_LABEL, WAYPOINT_DESC_LABEL, type ProcedureChart, type ProcedureLeg } from "../../airports/types";
 import AirportsDataFreshness from "../components/AirportsDataFreshness";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ProcedurePlate">;
+
+const CHART_CODE_FOR_PROC_TYPE = { SID: "DP", STAR: "STAR", APPROACH: "IAP" } as const;
+const NUMBER_WORD: Record<string, string> = {
+  "1": "ONE",
+  "2": "TWO",
+  "3": "THREE",
+  "4": "FOUR",
+  "5": "FIVE",
+  "6": "SIX",
+  "7": "SEVEN",
+  "8": "EIGHT",
+  "9": "NINE",
+};
+
+/**
+ * Best-effort match between a parsed CIFP procedure and the FAA's own chart
+ * PDFs — CIFP idents ("DEEZZ6", "I04L") and chart titles ("DEEZZ SIX
+ * DEPARTURE", "ILS OR LOC RWY 04L") aren't the same string, so this is a
+ * heuristic (runway-number overlap for approaches, base-fix-name + spelled-
+ * out revision number for SID/STAR), not a guaranteed link — shown as a
+ * pickable list rather than assumed correct.
+ */
+function findRelatedCharts(charts: ProcedureChart[], type: Props["route"]["params"]["type"], name: string, legs: ProcedureLeg[]): ProcedureChart[] {
+  const chartCode = CHART_CODE_FOR_PROC_TYPE[type];
+  const candidates = charts.filter((c) => c.chart_code === chartCode);
+  const upperName = name.toUpperCase();
+
+  const runwayTokens = new Set<string>();
+  for (const leg of legs) {
+    const m = leg.transition_ident.match(/^RW(\d{2}[LRC]?)/);
+    if (m) runwayTokens.add(m[1]);
+  }
+  const nameRunway = upperName.match(/(\d{2}[LRC]?)$/)?.[1];
+  if (nameRunway) runwayTokens.add(nameRunway);
+
+  const baseName = upperName.replace(/\d+$/, "");
+  const trailingDigit = upperName.match(/(\d)$/)?.[1];
+  const numberWord = trailingDigit ? NUMBER_WORD[trailingDigit] : null;
+
+  return candidates.filter((c) => {
+    const cn = c.chart_name.toUpperCase();
+    for (const t of runwayTokens) if (cn.includes(t)) return true;
+    if (baseName.length >= 3 && cn.includes(baseName)) return true;
+    if (numberWord && cn.includes(numberWord)) return true;
+    return false;
+  });
+}
 
 function formatAltitude(leg: ProcedureLeg): string | null {
   if (leg.alt1 == null) return null;
@@ -50,6 +97,7 @@ export default function ProcedurePlateScreen({ route, navigation }: Props) {
   const styles = useMemo(() => makeStyles(colors, spacing, fontScale), [colors, spacing, fontScale]);
   const airportsDb = useAirportsDb();
   const [legs, setLegs] = useState<ProcedureLeg[]>([]);
+  const [charts, setCharts] = useState<ProcedureChart[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
 
@@ -61,16 +109,21 @@ export default function ProcedurePlateScreen({ route, navigation }: Props) {
     if (!airportsDb) return;
     let cancelled = false;
     setLoading(true);
-    getProcedureLegs(airportsDb, airportIdent, type, name).then((rows) => {
-      if (!cancelled) {
-        setLegs(rows);
-        setLoading(false);
+    Promise.all([getProcedureLegs(airportsDb, airportIdent, type, name), getCharts(airportsDb, airportIdent)]).then(
+      ([legRows, chartRows]) => {
+        if (!cancelled) {
+          setLegs(legRows);
+          setCharts(chartRows);
+          setLoading(false);
+        }
       }
-    });
+    );
     return () => {
       cancelled = true;
     };
   }, [airportsDb, airportIdent, type, name]);
+
+  const relatedCharts = useMemo(() => findRelatedCharts(charts, type, name, legs), [charts, type, name, legs]);
 
   const transitions = useMemo(() => {
     const byTransition = new Map<string, ProcedureLeg[]>();
@@ -99,6 +152,22 @@ export default function ProcedurePlateScreen({ route, navigation }: Props) {
       <Text style={styles.subtitle}>
         {airportIdent} · {type}
       </Text>
+
+      {relatedCharts.length > 0 ? (
+        <View style={styles.chartSection}>
+          <Text style={styles.chartSectionTitle}>Official FAA chart{relatedCharts.length > 1 ? "s" : ""} (verify it's the right one)</Text>
+          {relatedCharts.map((c) => (
+            <Pressable
+              key={c.pdf_url}
+              onPress={() => navigation.navigate("ChartViewer", { airportIdent, chartName: c.chart_name, pdfUrl: c.pdf_url })}
+              style={({ pressed }) => [styles.chartRow, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.chartRowText}>{c.chart_name}</Text>
+              <Text style={styles.rowChevronInline}>›</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
 
       <TextInput
         value={query}
@@ -157,6 +226,26 @@ function makeStyles(colors: ThemeColors, spacing: (n: number) => number, fontSca
     content: { padding: spacing(2.5), paddingBottom: spacing(5) },
     center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
     subtitle: { fontSize: 13 * fontScale, color: colors.textMuted, marginBottom: spacing(1.5) },
+    chartSection: { marginBottom: spacing(2) },
+    chartSectionTitle: {
+      fontSize: 12 * fontScale,
+      fontWeight: "700",
+      color: colors.textMuted,
+      marginBottom: spacing(0.75),
+      textTransform: "uppercase",
+    },
+    chartRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: colors.primary,
+      borderRadius: 8,
+      paddingHorizontal: spacing(1.5),
+      paddingVertical: spacing(1),
+      marginBottom: spacing(0.6),
+    },
+    chartRowText: { color: "#fff", fontWeight: "700", fontSize: 13 * fontScale, flex: 1 },
+    rowChevronInline: { color: "#fff", fontSize: 16 * fontScale, marginLeft: spacing(1) },
     searchInput: {
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,

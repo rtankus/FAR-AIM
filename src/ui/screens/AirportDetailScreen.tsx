@@ -3,11 +3,15 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/types";
 import { useAirportsDb } from "../AirportsDbContext";
+import { useUserDb } from "../UserDbContext";
 import { useTheme } from "../ThemeContext";
 import type { ThemeColors } from "../theme";
-import { getAirport, getFrequencies, getProcedures, getRunways } from "../../airports/queries";
+import { getAirport, getCharts, getFrequencies, getProcedures, getRunways } from "../../airports/queries";
 import AirportsDataFreshness from "../components/AirportsDataFreshness";
-import type { Airport, Frequency, Procedure, Runway } from "../../airports/types";
+import { useAirportDensityAltitude } from "../hooks/useAirportDensityAltitude";
+import { decodeAltimeter, decodeTemp } from "../../weather/decode";
+import { timeAgo } from "../../weather/format";
+import { CHART_CODE_LABEL, type Airport, type Frequency, type Procedure, type ProcedureChart, type Runway } from "../../airports/types";
 
 type Props = NativeStackScreenProps<RootStackParamList, "AirportDetail">;
 
@@ -18,11 +22,13 @@ export default function AirportDetailScreen({ route, navigation }: Props) {
   const { colors, spacing, fontScale } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, fontScale), [colors, spacing, fontScale]);
   const airportsDb = useAirportsDb();
+  const userDb = useUserDb();
 
   const [airport, setAirport] = useState<Airport | null>(null);
   const [runways, setRunways] = useState<Runway[]>([]);
   const [procedures, setProcedures] = useState<Procedure[]>([]);
   const [frequencies, setFrequencies] = useState<Frequency[]>([]);
+  const [charts, setCharts] = useState<ProcedureChart[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,12 +40,14 @@ export default function AirportDetailScreen({ route, navigation }: Props) {
       getRunways(airportsDb, ident),
       getProcedures(airportsDb, ident),
       getFrequencies(airportsDb, ident),
-    ]).then(([a, r, p, f]) => {
+      getCharts(airportsDb, ident),
+    ]).then(([a, r, p, f, c]) => {
       if (cancelled) return;
       setAirport(a);
       setRunways(r);
       setProcedures(p);
       setFrequencies(f);
+      setCharts(c);
       setLoading(false);
       navigation.setOptions({ title: a?.ident ?? ident });
     });
@@ -47,6 +55,16 @@ export default function AirportDetailScreen({ route, navigation }: Props) {
       cancelled = true;
     };
   }, [airportsDb, ident, navigation]);
+
+  const densityAltitudeParams = useMemo(
+    () =>
+      airport && airport.elev_ft != null
+        ? { ident: airport.ident, lat: airport.lat, lon: airport.lon, elevationFt: airport.elev_ft }
+        : null,
+    [airport]
+  );
+  const { result: densityAltitude, loading: densityAltitudeLoading, error: densityAltitudeError } =
+    useAirportDensityAltitude(userDb, densityAltitudeParams);
 
   if (!airportsDb || loading) {
     return (
@@ -68,6 +86,10 @@ export default function AirportDetailScreen({ route, navigation }: Props) {
     type,
     items: procedures.filter((p) => p.type === type),
   }));
+  const chartsByCode = (["APD", "DP", "STAR", "IAP"] as const).map((code) => ({
+    code,
+    items: charts.filter((c) => c.chart_code === code),
+  }));
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -76,6 +98,37 @@ export default function AirportDetailScreen({ route, navigation }: Props) {
         {[airport.city, airport.state].filter(Boolean).join(", ")}
         {airport.elev_ft != null ? ` · ${airport.elev_ft} ft elev` : ""}
       </Text>
+
+      {densityAltitudeParams ? (
+        <Section title="Density Altitude">
+          {densityAltitudeLoading && !densityAltitude ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : densityAltitude ? (
+            <>
+              <Row
+                label="Pressure altitude"
+                value={`${Math.round(densityAltitude.pressureAltitudeFt).toLocaleString()} ft`}
+                styles={styles}
+              />
+              <Row
+                label="Density altitude"
+                value={`${Math.round(densityAltitude.densityAltitudeFt).toLocaleString()} ft`}
+                styles={styles}
+              />
+              <Text style={styles.footnote}>
+                {densityAltitude.sourceDistanceNm != null
+                  ? `From ${densityAltitude.metar.icaoId}, ${Math.round(densityAltitude.sourceDistanceNm)} nm away (nearest reporting station) — `
+                  : `From ${densityAltitude.metar.icaoId}'s own METAR — `}
+                {decodeAltimeter(densityAltitude.metar.altim)} · {decodeTemp(densityAltitude.metar.temp, densityAltitude.metar.dewp)}
+                {"\n"}Updated {timeAgo(densityAltitude.fetchedAt)}
+                {densityAltitude.stale ? " (cached)" : ""}
+              </Text>
+            </>
+          ) : densityAltitudeError ? (
+            <Text style={styles.empty}>{densityAltitudeError}</Text>
+          ) : null}
+        </Section>
+      ) : null}
 
       {runways.length > 0 ? (
         <Section title="Runways">
@@ -116,9 +169,30 @@ export default function AirportDetailScreen({ route, navigation }: Props) {
         ) : null
       )}
 
+      {chartsByCode.map(({ code, items }) =>
+        items.length > 0 ? (
+          <Section key={code} title={CHART_CODE_LABEL[code]}>
+            {items.map((c, i) => (
+              <Row
+                key={i}
+                label={c.chart_name}
+                value=""
+                onPress={() =>
+                  navigation.navigate("ChartViewer", { airportIdent: airport.ident, chartName: c.chart_name, pdfUrl: c.pdf_url })
+                }
+                styles={styles}
+              />
+            ))}
+          </Section>
+        ) : null
+      )}
+
       <AirportsDataFreshness style={styles.footnote} />
       <Text style={styles.footnote}>
-        Procedure names only — not full route/leg data. Not for navigation.
+        Charts are the FAA's official published PDFs for the current cycle — open one to view it, and optionally
+        save it for offline use. Everything above (runways, frequencies, procedure text) is bundled on-device
+        already; charts are fetched on demand since bundling every airport's PDFs would be gigabytes. Not for
+        navigation.
       </Text>
     </ScrollView>
   );

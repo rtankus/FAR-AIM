@@ -7,8 +7,9 @@
   "scripts": {
     "fetch:ourairports": "node scripts/fetch-ourairports.mjs",
     "fetch:cifp": "node scripts/fetch-cifp.mjs",
+    "fetch:charts": "node scripts/fetch-charts.mjs",
     "build:db": "node scripts/build-db.mjs",
-    "build": "npm run fetch:ourairports && npm run fetch:cifp && npm run build:db"
+    "build": "npm run fetch:ourairports && npm run fetch:cifp && npm run fetch:charts && npm run build:db"
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0"

@@ -98,6 +98,22 @@ export interface Frequency {
   name: string | null;
 }
 
+/** An official FAA d-TPP chart PDF (approach/departure/arrival/airport diagram) — link only, not the file itself. */
+export interface ProcedureChart {
+  airport_ident: string;
+  /** IAP (approach), DP (departure/SID), STAR (arrival), or APD (airport diagram). */
+  chart_code: "IAP" | "DP" | "STAR" | "APD";
+  chart_name: string;
+  pdf_url: string;
+}
+
+export const CHART_CODE_LABEL: Record<ProcedureChart["chart_code"], string> = {
+  IAP: "Approach",
+  DP: "Departure",
+  STAR: "Arrival",
+  APD: "Airport Diagram",
+};
+
 /** Shape written by airports-pipeline/scripts/build-db.mjs. */
 export interface AirportsManifest {
   version: string;
@@ -108,6 +124,7 @@ export interface AirportsManifest {
   runwayCount: number;
   procedureCount: number;
   procedureLegCount: number;
+  chartCount: number;
   navaidCount: number;
   frequencyCount: number;
   downloadUrl: string;

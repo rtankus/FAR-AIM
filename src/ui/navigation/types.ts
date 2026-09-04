@@ -33,6 +33,7 @@ export type RootStackParamList = {
   NearbyAirports: undefined;
   AirportDetail: { ident: string };
   ProcedurePlate: { airportIdent: string; type: ProcedureType; name: string };
+  ChartViewer: { airportIdent: string; chartName: string; pdfUrl: string };
   // Performance tab
   Performance: undefined;
   AircraftProfileForm: { id?: string } | undefined;

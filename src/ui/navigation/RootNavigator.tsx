@@ -22,6 +22,7 @@ import TfrMapScreen from "../screens/TfrMapScreen";
 import NearbyAirportsScreen from "../screens/NearbyAirportsScreen";
 import AirportDetailScreen from "../screens/AirportDetailScreen";
 import ProcedurePlateScreen from "../screens/ProcedurePlateScreen";
+import ChartViewerScreen from "../screens/ChartViewerScreen";
 import PerformanceScreen from "../screens/PerformanceScreen";
 import AircraftProfileFormScreen from "../screens/AircraftProfileFormScreen";
 import WeightAndBalanceScreen from "../screens/WeightAndBalanceScreen";
@@ -89,6 +90,7 @@ function AirportsStack() {
       <Stack.Screen name="NearbyAirports" component={NearbyAirportsScreen} options={{ title: "Airports" }} />
       <Stack.Screen name="AirportDetail" component={AirportDetailScreen} options={{ title: "Airport" }} />
       <Stack.Screen name="ProcedurePlate" component={ProcedurePlateScreen} options={{ title: "Procedure" }} />
+      <Stack.Screen name="ChartViewer" component={ChartViewerScreen} options={{ title: "Chart" }} />
     </Stack.Navigator>
   );
 }

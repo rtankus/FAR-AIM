@@ -266,8 +266,8 @@ export default function SettingsScreen() {
             : "Loading airport data info…"}
         </Text>
         <Text style={styles.helperText}>
-          Runways, frequencies, and full SID/STAR/approach procedure text (fixes, IAF/IF/FAF/MAP, altitudes) for
-          US airports (FAA CIFP + OurAirports).
+          Runways, frequencies, full SID/STAR/approach procedure text (fixes, IAF/IF/FAF/MAP, altitudes), and links
+          to the FAA's official chart PDFs for US airports (FAA CIFP + d-TPP + OurAirports).
         </Text>
         <Pressable
           onPress={handleCheckForAirportsUpdates}

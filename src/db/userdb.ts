@@ -32,6 +32,18 @@ export interface TcdsDocument {
   saved_at: number;
 }
 
+export interface SavedChart {
+  /** `${airport_ident}|${pdf_url}` — stable across app runs without a separate id column. */
+  id: string;
+  airport_ident: string;
+  chart_name: string;
+  pdf_url: string;
+  /** Path relative to the Documents directory — see TcdsDocument.file_path; resolve with resolveChartFile() from db/chartFiles. */
+  file_path: string;
+  file_size: number;
+  saved_at: number;
+}
+
 export interface Highlight {
   id: string;
   section_id: string;
@@ -84,6 +96,16 @@ export async function initUserDb(userDb: SQLiteDatabase): Promise<void> {
       id TEXT PRIMARY KEY,
       label TEXT NOT NULL,
       source_url TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_size INTEGER NOT NULL,
+      saved_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS saved_charts (
+      id TEXT PRIMARY KEY,
+      airport_ident TEXT NOT NULL,
+      chart_name TEXT NOT NULL,
+      pdf_url TEXT NOT NULL,
       file_path TEXT NOT NULL,
       file_size INTEGER NOT NULL,
       saved_at INTEGER NOT NULL
@@ -377,6 +399,44 @@ export async function getTcdsDocument(userDb: SQLiteDatabase, id: string): Promi
 
 export async function deleteTcdsDocument(userDb: SQLiteDatabase, id: string): Promise<void> {
   await userDb.runAsync(`DELETE FROM tcds_documents WHERE id = ?`, [id]);
+}
+
+function chartId(airportIdent: string, pdfUrl: string): string {
+  return `${airportIdent}|${pdfUrl}`;
+}
+
+/** Whether a chart (by airport + its FAA PDF URL) is already saved for offline viewing. */
+export async function getSavedChart(userDb: SQLiteDatabase, airportIdent: string, pdfUrl: string): Promise<SavedChart | null> {
+  const row = await userDb.getFirstAsync<SavedChart>(`SELECT * FROM saved_charts WHERE id = ?`, [
+    chartId(airportIdent, pdfUrl),
+  ]);
+  return row ?? null;
+}
+
+export async function addSavedChart(
+  userDb: SQLiteDatabase,
+  params: { airportIdent: string; chartName: string; pdfUrl: string; filePath: string; fileSize: number }
+): Promise<SavedChart> {
+  const id = chartId(params.airportIdent, params.pdfUrl);
+  const now = Date.now();
+  await userDb.runAsync(
+    `INSERT OR REPLACE INTO saved_charts (id, airport_ident, chart_name, pdf_url, file_path, file_size, saved_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [id, params.airportIdent, params.chartName, params.pdfUrl, params.filePath, params.fileSize, now]
+  );
+  return {
+    id,
+    airport_ident: params.airportIdent,
+    chart_name: params.chartName,
+    pdf_url: params.pdfUrl,
+    file_path: params.filePath,
+    file_size: params.fileSize,
+    saved_at: now,
+  };
+}
+
+export async function deleteSavedChart(userDb: SQLiteDatabase, airportIdent: string, pdfUrl: string): Promise<void> {
+  await userDb.runAsync(`DELETE FROM saved_charts WHERE id = ?`, [chartId(airportIdent, pdfUrl)]);
 }
 
 /**
