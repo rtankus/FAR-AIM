@@ -2,9 +2,14 @@ name: Refresh airports data
 
 on:
   schedule:
-    # 1st of every month, 09:00 UTC. Roughly tracks the FAA's 28-day AIRAC
-    # cycle without needing to compute cycle dates here.
-    - cron: "0 9 1 * *"
+     # Every Wednesday 09:00 UTC. The FAA's AIRAC cycle is exactly 28 days,
+    # which doesn't line up with calendar months — a monthly cron can lag a
+    # newly-effective cycle by nearly another full cycle in the worst case.
+    # Weekly guarantees picking up each new cycle within days of it taking
+    # effect; fetch-cifp.mjs's findCifpZipUrl() always resolves to whichever
+    # cycle is actually effective right now, so an extra run when nothing
+    # changed is just a no-op (see the "changed" check below).
+    - cron: "0 9 * * 3"
   workflow_dispatch: {} # lets you trigger a run manually from the Actions tab
 
 permissions:
