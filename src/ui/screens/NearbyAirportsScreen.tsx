@@ -10,16 +10,40 @@ import AirportsDataFreshness from "../components/AirportsDataFreshness";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NearbyAirports">;
 
+type Category = "airport" | "heliport";
+const CATEGORIES: { key: Category; label: string }[] = [
+  { key: "airport", label: "Airports" },
+  { key: "heliport", label: "Heliports" },
+];
+
+/** OurAirports' `type` column — "heliport" is its own type, everything else (small/medium/large_airport, seaplane_base, etc.) counts as an airport. */
+function matchesCategory(airportType: string, category: Category): boolean {
+  return category === "heliport" ? airportType === "heliport" : airportType !== "heliport";
+}
+
 export default function NearbyAirportsScreen({ navigation }: Props) {
   const { colors, spacing, fontScale } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, fontScale), [colors, spacing, fontScale]);
   const airportsDb = useAirportsDb();
   const [radius, setRadius] = useState<NearbyAirportRadius>(25);
-  const { rows, loading, error, refresh } = useNearbyAirports(airportsDb, radius);
+  const [category, setCategory] = useState<Category>("airport");
+  const { rows: allRows, loading, error, refresh } = useNearbyAirports(airportsDb, radius);
+  const rows = useMemo(() => allRows.filter((r) => matchesCategory(r.airport.type, category)), [allRows, category]);
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <View style={styles.categoryRow}>
+          {CATEGORIES.map((c) => (
+            <Pressable
+              key={c.key}
+              onPress={() => setCategory(c.key)}
+              style={[styles.categoryChip, c.key === category && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+            >
+              <Text style={[styles.categoryChipText, c.key === category && { color: "#fff" }]}>{c.label}</Text>
+            </Pressable>
+          ))}
+        </View>
         <View style={styles.radiusRow}>
           {NEARBY_AIRPORT_RADII_NM.map((r) => (
             <Pressable
@@ -45,7 +69,9 @@ export default function NearbyAirportsScreen({ navigation }: Props) {
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           !loading && !error && airportsDb ? (
-            <Text style={styles.empty}>No airports within {radius} nm.</Text>
+            <Text style={styles.empty}>
+              No {category === "heliport" ? "heliports" : "airports"} within {radius} nm.
+            </Text>
           ) : null
         }
         renderItem={({ item }) => (
@@ -81,6 +107,16 @@ function makeStyles(colors: ThemeColors, spacing: (n: number) => number, fontSca
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     header: { paddingHorizontal: spacing(2.5), paddingTop: spacing(2) },
+    categoryRow: { flexDirection: "row", marginBottom: spacing(1) },
+    categoryChip: {
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      borderRadius: 20,
+      paddingHorizontal: spacing(2),
+      paddingVertical: spacing(0.75),
+      marginRight: spacing(1),
+    },
+    categoryChipText: { color: colors.text, fontWeight: "700", fontSize: 13 * fontScale },
     radiusRow: { flexDirection: "row", marginBottom: spacing(1.5) },
     radiusChip: {
       borderWidth: StyleSheet.hairlineWidth,
