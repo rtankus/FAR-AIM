@@ -1,11 +1,13 @@
-import { useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, FlatList, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/types";
 import { useAirportsDb } from "../AirportsDbContext";
 import { useTheme } from "../ThemeContext";
 import type { ThemeColors } from "../theme";
 import { NEARBY_AIRPORT_RADII_NM, useNearbyAirports, type NearbyAirportRadius } from "../hooks/useNearbyAirports";
+import { searchAirportsByIdent } from "../../airports/queries";
+import type { Airport } from "../../airports/types";
 import AirportsDataFreshness from "../components/AirportsDataFreshness";
 
 type Props = NativeStackScreenProps<RootStackParamList, "NearbyAirports">;
@@ -15,6 +17,11 @@ const CATEGORIES: { key: Category; label: string }[] = [
   { key: "airport", label: "Airports" },
   { key: "heliport", label: "Heliports" },
 ];
+
+interface Row {
+  airport: Airport;
+  dist: number | null;
+}
 
 /** OurAirports' `type` column — "heliport" is its own type, everything else (small/medium/large_airport, seaplane_base, etc.) counts as an airport. */
 function matchesCategory(airportType: string, category: Category): boolean {
@@ -27,12 +34,49 @@ export default function NearbyAirportsScreen({ navigation }: Props) {
   const airportsDb = useAirportsDb();
   const [radius, setRadius] = useState<NearbyAirportRadius>(25);
   const [category, setCategory] = useState<Category>("airport");
-  const { rows: allRows, loading, error, refresh } = useNearbyAirports(airportsDb, radius);
-  const rows = useMemo(() => allRows.filter((r) => matchesCategory(r.airport.type, category)), [allRows, category]);
+  const { rows: nearbyRows, loading, error, refresh } = useNearbyAirports(airportsDb, radius);
+
+  const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Airport[]>([]);
+  const isSearching = query.trim().length > 0;
+
+  useEffect(() => {
+    if (!airportsDb || !isSearching) {
+      setSearchResults([]);
+      return;
+    }
+    let cancelled = false;
+    searchAirportsByIdent(airportsDb, query).then((results) => {
+      if (!cancelled) setSearchResults(results);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [airportsDb, query, isSearching]);
+
+  const rows = useMemo<Row[]>(() => {
+    const source: Row[] = isSearching
+      ? searchResults.map((airport) => ({ airport, dist: null }))
+      : nearbyRows.map((r) => ({ airport: r.airport, dist: r.dist }));
+    return source.filter((r) => matchesCategory(r.airport.type, category));
+  }, [isSearching, searchResults, nearbyRows, category]);
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          onSubmitEditing={Keyboard.dismiss}
+          placeholder="Search by airport code (e.g. KJFK)"
+          placeholderTextColor={colors.textMuted}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+          style={styles.searchInput}
+        />
+
         <View style={styles.categoryRow}>
           {CATEGORIES.map((c) => (
             <Pressable
@@ -44,33 +88,42 @@ export default function NearbyAirportsScreen({ navigation }: Props) {
             </Pressable>
           ))}
         </View>
-        <View style={styles.radiusRow}>
-          {NEARBY_AIRPORT_RADII_NM.map((r) => (
-            <Pressable
-              key={r}
-              onPress={() => setRadius(r)}
-              style={[styles.radiusChip, r === radius && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-            >
-              <Text style={[styles.radiusChipText, r === radius && { color: "#fff" }]}>{r} nm</Text>
-            </Pressable>
-          ))}
-        </View>
+        {isSearching ? (
+          <Text style={styles.searchHint}>Results for "{query.trim().toUpperCase()}"</Text>
+        ) : (
+          <View style={styles.radiusRow}>
+            {NEARBY_AIRPORT_RADII_NM.map((r) => (
+              <Pressable
+                key={r}
+                onPress={() => setRadius(r)}
+                style={[styles.radiusChip, r === radius && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+              >
+                <Text style={[styles.radiusChipText, r === radius && { color: "#fff" }]}>{r} nm</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
       </View>
 
       {!airportsDb ? <ActivityIndicator style={{ marginTop: spacing(2) }} color={colors.primary} /> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      {loading && rows.length === 0 ? <ActivityIndicator style={{ marginTop: spacing(2) }} color={colors.primary} /> : null}
+      {!isSearching && loading && rows.length === 0 ? (
+        <ActivityIndicator style={{ marginTop: spacing(2) }} color={colors.primary} />
+      ) : null}
 
       <FlatList
         data={rows}
         keyExtractor={(row) => row.airport.ident}
-        refreshing={loading}
-        onRefresh={refresh}
+        refreshing={!isSearching && loading}
+        onRefresh={isSearching ? undefined : refresh}
         contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           !loading && !error && airportsDb ? (
             <Text style={styles.empty}>
-              No {category === "heliport" ? "heliports" : "airports"} within {radius} nm.
+              {isSearching
+                ? `No ${category === "heliport" ? "heliports" : "airports"} match "${query.trim().toUpperCase()}".`
+                : `No ${category === "heliport" ? "heliports" : "airports"} within ${radius} nm.`}
             </Text>
           ) : null
         }
@@ -87,7 +140,8 @@ export default function NearbyAirportsScreen({ navigation }: Props) {
                 {item.airport.name}
               </Text>
               <Text style={styles.meta}>
-                {[item.airport.city, item.airport.state].filter(Boolean).join(", ")} · {Math.round(item.dist)} nm
+                {[item.airport.city, item.airport.state].filter(Boolean).join(", ")}
+                {item.dist != null ? ` · ${Math.round(item.dist)} nm` : ""}
               </Text>
             </View>
             <Text style={styles.chevron}>›</Text>
@@ -107,6 +161,18 @@ function makeStyles(colors: ThemeColors, spacing: (n: number) => number, fontSca
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     header: { paddingHorizontal: spacing(2.5), paddingTop: spacing(2) },
+    searchInput: {
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      borderRadius: 10,
+      paddingHorizontal: spacing(1.5),
+      paddingVertical: spacing(1),
+      color: colors.text,
+      fontSize: 14 * fontScale,
+      marginBottom: spacing(1.25),
+    },
+    searchHint: { fontSize: 12 * fontScale, color: colors.textMuted, marginBottom: spacing(1.5) },
     categoryRow: { flexDirection: "row", marginBottom: spacing(1) },
     categoryChip: {
       borderWidth: StyleSheet.hairlineWidth,

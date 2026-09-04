@@ -22,6 +22,23 @@ export async function navaidsInBbox(db: SQLiteDatabase, box: BoundingBox): Promi
   );
 }
 
+/**
+ * Airports whose ident starts with `query` (e.g. "KJF" -> KJFK), for a code
+ * search bar rather than a location-based lookup. Also tries a "K"-prefixed
+ * variant so a bare 3-letter FAA LID (e.g. "JFK") still finds the ICAO-keyed
+ * row most US airports are actually stored under.
+ */
+export async function searchAirportsByIdent(db: SQLiteDatabase, query: string, limit = 20): Promise<Airport[]> {
+  const q = query.trim().toUpperCase();
+  if (!q) return [];
+  const kPrefixed = !q.startsWith("K") ? `K${q}` : null;
+  return db.getAllAsync<Airport>(
+    `SELECT * FROM airports WHERE ident LIKE ? ${kPrefixed ? "OR ident LIKE ?" : ""}
+     ORDER BY (ident = ?) DESC, ident LIMIT ?`,
+    kPrefixed ? [`${q}%`, `${kPrefixed}%`, q, limit] : [`${q}%`, q, limit]
+  );
+}
+
 export async function getAirport(db: SQLiteDatabase, ident: string): Promise<Airport | null> {
   return db.getFirstAsync<Airport>(`SELECT * FROM airports WHERE ident = ?`, [ident.toUpperCase()]);
 }
