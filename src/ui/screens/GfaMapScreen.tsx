@@ -29,6 +29,12 @@ export default function GfaMapScreen() {
           onLoadStart={() => setLoading(true)}
           onLoadEnd={() => setLoading(false)}
           onError={() => setFailed(true)}
+          // The GFA viewer's own map handles panning/zooming itself — leaving
+          // the WebView's outer scroll/bounce enabled just fights it and
+          // drags the surrounding screen along with the gesture.
+          scrollEnabled={false}
+          bounces={false}
+          overScrollMode="never"
         />
       )}
       {loading && !failed ? (

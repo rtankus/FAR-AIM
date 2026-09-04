@@ -6,7 +6,7 @@ import type { RootStackParamList } from "../navigation/types";
 import { useUserDb } from "../UserDbContext";
 import { useTheme } from "../ThemeContext";
 import type { ThemeColors } from "../theme";
-import { listProfiles } from "../../performance/store";
+import { ensureSeedProfiles, listProfiles } from "../../performance/store";
 import type { AircraftProfile } from "../../performance/types";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Performance">;
@@ -17,8 +17,9 @@ export default function PerformanceScreen({ navigation }: Props) {
   const styles = useMemo(() => makeStyles(colors, spacing, fontScale), [colors, spacing, fontScale]);
   const [profiles, setProfiles] = useState<AircraftProfile[]>([]);
 
-  const load = useCallback(() => {
-    listProfiles(userDb).then(setProfiles);
+  const load = useCallback(async () => {
+    await ensureSeedProfiles(userDb);
+    setProfiles(await listProfiles(userDb));
   }, [userDb]);
 
   useFocusEffect(

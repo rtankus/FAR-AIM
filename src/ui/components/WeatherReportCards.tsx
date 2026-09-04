@@ -3,18 +3,27 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { AirSigmet, Metar, Pirep, Taf, TafForecastPeriod } from "../../weather/types";
 import { flightCategoryColor, severityLabel, shortTime } from "../../weather/format";
 import { decodeAltimeter, decodeClouds, decodeTemp, decodeVisibility, decodeWind, decodeWxString } from "../../weather/decode";
+import type { Notam } from "../../notams/types";
 import { useTheme } from "../ThemeContext";
 import type { ThemeColors } from "../theme";
 
-/** Toggle + expandable plain-English breakdown, shared by MetarCard/TafCard. */
-function DecodeToggle({ children }: { children: React.ReactNode }) {
+/** Toggle + expandable block, shared by MetarCard/TafCard/NotamCard. */
+function DecodeToggle({
+  children,
+  collapsedLabel = "Decode ▼",
+  expandedLabel = "Hide decoded ▲",
+}: {
+  children: React.ReactNode;
+  collapsedLabel?: string;
+  expandedLabel?: string;
+}) {
   const { colors, spacing, fontScale } = useTheme();
   const styles = useMemo(() => makeCardStyles(colors, spacing, fontScale), [colors, spacing, fontScale]);
   const [expanded, setExpanded] = useState(false);
   return (
     <View>
       <Pressable onPress={() => setExpanded((e) => !e)} hitSlop={6}>
-        <Text style={styles.decodeToggle}>{expanded ? "Hide decoded ▲" : "Decode ▼"}</Text>
+        <Text style={styles.decodeToggle}>{expanded ? expandedLabel : collapsedLabel}</Text>
       </Pressable>
       {expanded ? <View style={styles.decodedBlock}>{children}</View> : null}
     </View>
@@ -138,6 +147,35 @@ export function PirepCard({ item, distanceNm }: { item: Pirep; distanceNm?: numb
       </View>
       <Text style={styles.raw}>{item.rawOb}</Text>
       {obs ? <Text style={styles.meta}>Reported {obs}</Text> : null}
+    </View>
+  );
+}
+
+export function NotamCard({ notam, distanceNm }: { notam: Notam; distanceNm?: number }) {
+  const { colors, spacing, fontScale } = useTheme();
+  const styles = useMemo(() => makeCardStyles(colors, spacing, fontScale), [colors, spacing, fontScale]);
+  const icaoText = notam.notamTranslation?.find((t) => t.type === "ICAO");
+  const local = notam.notamTranslation?.find((t) => t.simpleText);
+  return (
+    <View style={styles.card}>
+      <View style={styles.headerRow}>
+        <Text style={styles.ident}>{notam.icaoLocation ?? notam.location ?? "NOTAM"}</Text>
+        {notam.number ? <Text style={styles.sectionLabel}>{notam.number}</Text> : null}
+        <View style={{ flex: 1 }} />
+        {distanceNm != null ? <Text style={styles.meta}>{Math.round(distanceNm)} nm</Text> : null}
+      </View>
+      <Text style={styles.raw}>{notam.text ?? local?.simpleText ?? "(no text provided)"}</Text>
+      {notam.effectiveStart ? (
+        <Text style={styles.meta}>
+          Effective {notam.effectiveStart}
+          {notam.effectiveEnd ? ` – ${notam.effectiveEnd}` : ""}
+        </Text>
+      ) : null}
+      {icaoText?.formattedText ? (
+        <DecodeToggle collapsedLabel="Full ICAO text ▼" expandedLabel="Hide full text ▲">
+          <DecodedLine value={icaoText.formattedText} />
+        </DecodeToggle>
+      ) : null}
     </View>
   );
 }

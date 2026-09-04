@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "../navigation/types";
+import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
+import type { RootStackParamList, TabParamList } from "../navigation/types";
 import { useUserDb } from "../UserDbContext";
 import { useTheme } from "../ThemeContext";
 import type { ThemeColors } from "../theme";
@@ -12,8 +13,11 @@ import { NEARBY_RADII_NM, useNearbyWeather } from "../hooks/useNearbyWeather";
 import { useNearbyTfrs } from "../hooks/useNearbyTfrs";
 import { useFavoriteAirports } from "../hooks/useFavoriteAirports";
 import { legalColor } from "../../tfr/format";
-import { AirSigmetCard, MetarCard, PirepCard, StalenessBanner, TafCard } from "../components/WeatherReportCards";
+import { AirSigmetCard, MetarCard, NotamCard, PirepCard, StalenessBanner, TafCard } from "../components/WeatherReportCards";
 import type { Metar, Taf } from "../../weather/types";
+import { fetchNotamsByLocation, NotamCredentialsMissingError } from "../../notams/api";
+import { staleWhileRevalidateNotams } from "../../notams/cache";
+import type { Notam } from "../../notams/types";
 
 const TFR_RADII_NM = [50, 100, 150, 250] as const;
 
@@ -25,6 +29,8 @@ interface Result {
   fetchedAt: number;
   stale: boolean;
   offline: boolean;
+  notams: Notam[];
+  notamsSetupNeeded: boolean;
 }
 
 export default function WeatherScreen({ navigation }: Props) {
@@ -37,6 +43,7 @@ export default function WeatherScreen({ navigation }: Props) {
   const [result, setResult] = useState<Result | null>(null);
   const nearby = useNearbyWeather(userDb);
   const { favorites, toggleFavorite, isFavorite } = useFavoriteAirports(userDb);
+  const tabNavigation = navigation.getParent<BottomTabNavigationProp<TabParamList>>();
   const [tfrRadius, setTfrRadius] = useState<(typeof TFR_RADII_NM)[number]>(100);
   const tfrs = useNearbyTfrs(userDb, tfrRadius);
   const [nearbyExpanded, setNearbyExpanded] = useState(true);
@@ -55,11 +62,11 @@ export default function WeatherScreen({ navigation }: Props) {
     const applyIfCurrent = (updater: (prev: Result | null) => Result | null) =>
       setResult((prev) => (prev?.metar?.icaoId === id || prev?.taf?.icaoId === id || !prev ? updater(prev) : prev));
     try {
-      const [metarRes, tafRes] = await Promise.all([
+      const [metarRes, tafRes, notamOutcome] = await Promise.all([
         staleWhileRevalidate(userDb, `metar:${id}`, () => fetchMetarsByIds([id]), (fresh) =>
           applyIfCurrent((prev) => ({
+            ...(prev as Result),
             metar: fresh.data[0] ?? null,
-            taf: prev?.taf ?? null,
             fetchedAt: fresh.fetchedAt,
             stale: fresh.stale,
             offline: fresh.offline,
@@ -67,13 +74,15 @@ export default function WeatherScreen({ navigation }: Props) {
         ),
         staleWhileRevalidate(userDb, `taf:${id}`, () => fetchTafsByIds([id]), (fresh) =>
           applyIfCurrent((prev) => ({
-            metar: prev?.metar ?? null,
+            ...(prev as Result),
             taf: fresh.data[0] ?? null,
-            fetchedAt: prev?.fetchedAt ?? fresh.fetchedAt,
-            stale: prev?.stale ?? fresh.stale,
-            offline: prev?.offline ?? fresh.offline,
           }))
         ).catch(() => null),
+        staleWhileRevalidateNotams(userDb, `notam:${id}`, () => fetchNotamsByLocation(userDb, id), (fresh) =>
+          applyIfCurrent((prev) => ({ ...(prev as Result), notams: fresh.data }))
+        )
+          .then((res) => ({ notams: res.data, setupNeeded: false }))
+          .catch((err) => ({ notams: [] as Notam[], setupNeeded: err instanceof NotamCredentialsMissingError })),
       ]);
       if (!metarRes.data[0] && !tafRes?.data[0]) {
         setError(`No current METAR/TAF found for "${id}". Check the ICAO identifier.`);
@@ -85,6 +94,8 @@ export default function WeatherScreen({ navigation }: Props) {
         fetchedAt: metarRes.fetchedAt,
         stale: metarRes.stale || !!tafRes?.stale,
         offline: metarRes.offline || !!tafRes?.offline,
+        notams: notamOutcome.notams,
+        notamsSetupNeeded: notamOutcome.setupNeeded,
       });
     } catch (err) {
       setError(String(err instanceof Error ? err.message : err));
@@ -110,7 +121,7 @@ export default function WeatherScreen({ navigation }: Props) {
       />
       <NavRow
         label="NOTAMs"
-        hint="FAA NOTAM Search (needs a live connection)"
+        hint="Search by airport or find nearby (FAA test feed)"
         onPress={() => navigation.navigate("Notams")}
       />
 
@@ -168,6 +179,20 @@ export default function WeatherScreen({ navigation }: Props) {
           <StalenessBanner stale={result.stale} offline={result.offline} fetchedAtLabel={timeAgo(result.fetchedAt)} />
           {result.metar ? <MetarCard metar={result.metar} /> : null}
           {result.taf ? <TafCard taf={result.taf} /> : null}
+
+          {result.notamsSetupNeeded ? (
+            <Pressable onPress={() => tabNavigation?.navigate("SettingsTab", { screen: "Settings" })} style={styles.setupCard}>
+              <Text style={styles.setupCardText}>Add your FAA NOTAM API credentials in Settings to see NOTAMs here too.</Text>
+              <Text style={styles.setupCardLink}>Open Settings ›</Text>
+            </Pressable>
+          ) : result.notams.length > 0 ? (
+            <>
+              <Text style={styles.sectionTitle}>NOTAMs</Text>
+              {result.notams.map((n) => (
+                <NotamCard key={n.id} notam={n} />
+              ))}
+            </>
+          ) : null}
         </View>
       ) : null}
 
@@ -286,12 +311,6 @@ export default function WeatherScreen({ navigation }: Props) {
         onPress={() => navigation.navigate("Tfr")}
       />
 
-      <NavRow
-        label="Nearby airports"
-        hint="Runways, frequencies, and SID/STAR/approach names — works offline"
-        onPress={() => navigation.navigate("NearbyAirports")}
-      />
-
       <Text style={styles.footnote}>
         Data from aviationweather.gov and the FAA's public TFR service. Successful lookups are cached
         on-device so the last-known report is still available if you check again with no connection.
@@ -354,6 +373,16 @@ function makeStyles(colors: ThemeColors, spacing: (n: number) => number, fontSca
       marginBottom: spacing(0.75),
     },
     favChipText: { color: colors.text, fontWeight: "600", fontSize: 12.5 * fontScale },
+    setupCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 10,
+      padding: spacing(1.75),
+      marginTop: spacing(1),
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    setupCardText: { fontSize: 13 * fontScale, color: colors.textMuted },
+    setupCardLink: { fontSize: 13 * fontScale, color: colors.primary, fontWeight: "700", marginTop: 6 },
     error: { color: colors.danger, fontSize: 13 * fontScale, marginTop: spacing(2) },
     divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: spacing(3) },
     sectionHeaderRow: {

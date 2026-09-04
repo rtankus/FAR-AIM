@@ -1,11 +1,12 @@
 {
-  "version": "2026-09-04T04-27-43-786Z",
-  "builtAt": "2026-09-04T04:27:43.829Z",
-  "sha256": "5917f881465db07b7af3532db2f185f3054d5430d544b46ed5338b98b208e885",
-  "sizeBytes": 5816320,
+  "version": "2026-09-04T05-19-19-605Z",
+  "builtAt": "2026-09-04T05:19:19.663Z",
+  "sha256": "683ce8e70d66610dda3cdf7da39c0306288e23167a39c4856b34feb252f81fe9",
+  "sizeBytes": 25931776,
   "airportCount": 25053,
   "runwayCount": 22858,
   "procedureCount": 13671,
+  "procedureLegCount": 199040,
   "navaidCount": 2804,
   "frequencyCount": 13029,
   "downloadUrl": "https://github.com/rtankus/FAR-AIM/releases/download/airports-latest/airports.db"

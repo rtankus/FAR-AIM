@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import * as Network from "expo-network";
 import { useTheme, type Appearance } from "../ThemeContext";
 import { FONT_SIZE_LABELS, FONT_SCALES, type FontSizeKey, type ThemeColors } from "../theme";
 import { useReloadDatabase } from "../ReloadContext";
 import { useAirportsDb, useReloadAirportsDb } from "../AirportsDbContext";
+import { useUserDb } from "../UserDbContext";
+import { getNotamCredentials, setNotamCredentials } from "../../notams/credentials";
 import {
   applyDownloadedContentUpdate,
   checkForContentUpdate,
@@ -32,6 +34,7 @@ const FONT_SIZE_OPTIONS = Object.keys(FONT_SCALES) as FontSizeKey[];
 
 export default function SettingsScreen() {
   const db = useSQLiteContext();
+  const userDb = useUserDb();
   const reloadDatabase = useReloadDatabase();
   const airportsDb = useAirportsDb();
   const { close: closeAirportsDb, reopen: reopenAirportsDb } = useReloadAirportsDb();
@@ -43,10 +46,34 @@ export default function SettingsScreen() {
   const [airportsVersion, setAirportsVersion] = useState<{ version: string; builtAt: string } | null>(null);
   const [checkingAirports, setCheckingAirports] = useState(false);
   const [updatingAirports, setUpdatingAirports] = useState(false);
+  const [notamClientId, setNotamClientId] = useState("");
+  const [notamClientSecret, setNotamClientSecret] = useState("");
+  const [notamSavedOnce, setNotamSavedOnce] = useState(false);
 
   useEffect(() => {
     getInstalledVersion(db).then(setVersion);
   }, [db]);
+
+  useEffect(() => {
+    getNotamCredentials(userDb).then((creds) => {
+      if (creds) {
+        setNotamClientId(creds.clientId);
+        setNotamClientSecret(creds.clientSecret);
+        setNotamSavedOnce(true);
+      }
+    });
+  }, [userDb]);
+
+  const saveNotamCredentials = useCallback(() => {
+    if (!notamClientId.trim() || !notamClientSecret.trim()) {
+      Alert.alert("Missing info", "Enter both the Key and Secret from your NMS-API onboarding spreadsheet.");
+      return;
+    }
+    setNotamCredentials(userDb, { clientId: notamClientId, clientSecret: notamClientSecret }).then(() => {
+      setNotamSavedOnce(true);
+      Alert.alert("Saved", "NOTAMs will now show up when you search an airport or check nearby weather.");
+    });
+  }, [notamClientId, notamClientSecret, userDb]);
 
   useEffect(() => {
     if (airportsDb) getInstalledAirportsVersion(airportsDb).then(setAirportsVersion);
@@ -239,7 +266,8 @@ export default function SettingsScreen() {
             : "Loading airport data info…"}
         </Text>
         <Text style={styles.helperText}>
-          Runways, frequencies, and SID/STAR/approach names for US airports (FAA CIFP + OurAirports).
+          Runways, frequencies, and full SID/STAR/approach procedure text (fixes, IAF/IF/FAF/MAP, altitudes) for
+          US airports (FAA CIFP + OurAirports).
         </Text>
         <Pressable
           onPress={handleCheckForAirportsUpdates}
@@ -249,6 +277,40 @@ export default function SettingsScreen() {
           <Text style={styles.updateButtonText}>
             {updatingAirports ? "Updating…" : checkingAirports ? "Checking…" : "Check for Updates"}
           </Text>
+        </Pressable>
+      </View>
+
+      <Text style={styles.sectionLabel}>FAA NOTAM API (NMS)</Text>
+      <View style={styles.contentCard}>
+        <Text style={styles.helperText}>
+          Enter the Key and Secret from your NMS-API onboarding spreadsheet. These credentials are currently
+          issued for the FAA's pre-production/staging test environment, not production — treat any NOTAM shown
+          in this app as a test feed, not one to fly on.
+        </Text>
+        <TextInput
+          value={notamClientId}
+          onChangeText={setNotamClientId}
+          placeholder="Key (Client ID)"
+          placeholderTextColor={colors.textMuted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={[styles.credInput, { marginTop: spacing(1.5) }]}
+        />
+        <TextInput
+          value={notamClientSecret}
+          onChangeText={setNotamClientSecret}
+          placeholder="Secret (Client Secret)"
+          placeholderTextColor={colors.textMuted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry
+          style={[styles.credInput, { marginTop: spacing(1) }]}
+        />
+        <Pressable
+          onPress={saveNotamCredentials}
+          style={({ pressed }) => [styles.updateButton, { marginTop: spacing(1.5) }, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.updateButtonText}>{notamSavedOnce ? "Update" : "Save"}</Text>
         </Pressable>
       </View>
     </ScrollView>
@@ -297,6 +359,16 @@ function makeStyles(colors: ThemeColors, spacing: (n: number) => number) {
       backgroundColor: colors.surface,
     },
     versionText: { fontSize: 12, color: colors.textMuted, marginBottom: spacing(1) },
+    credInput: {
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      borderRadius: 10,
+      paddingHorizontal: spacing(1.5),
+      paddingVertical: spacing(1.1),
+      color: colors.text,
+      fontSize: 15,
+    },
     updateButton: { backgroundColor: colors.primary, borderRadius: 10, paddingVertical: spacing(1.5), alignItems: "center" },
     updateButtonText: { color: "#fff", fontWeight: "700", fontSize: 15 },
   });

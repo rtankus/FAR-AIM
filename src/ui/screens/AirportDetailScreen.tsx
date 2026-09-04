@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/types";
 import { useAirportsDb } from "../AirportsDbContext";
@@ -104,7 +104,13 @@ export default function AirportDetailScreen({ route, navigation }: Props) {
         items.length > 0 ? (
           <Section key={type} title={PROCEDURE_TYPE_LABEL[type]}>
             {items.map((p, i) => (
-              <Row key={i} label={p.name} value="" styles={styles} />
+              <Row
+                key={i}
+                label={p.name}
+                value=""
+                onPress={() => navigation.navigate("ProcedurePlate", { airportIdent: airport.ident, type: p.type, name: p.name })}
+                styles={styles}
+              />
             ))}
           </Section>
         ) : null
@@ -139,17 +145,24 @@ function SectionTitle({ children }: { children: ReactNode }) {
 function Row({
   label,
   value,
+  onPress,
   styles,
 }: {
   label: string;
   value: string;
+  onPress?: () => void;
   styles: ReturnType<typeof makeStyles>;
 }) {
   return (
-    <View style={styles.row}>
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      style={({ pressed }) => [styles.row, onPress && pressed && { opacity: 0.7 }]}
+    >
       <Text style={styles.rowLabel}>{label}</Text>
       {value ? <Text style={styles.rowValue}>{value}</Text> : null}
-    </View>
+      {onPress ? <Text style={styles.rowChevron}>›</Text> : null}
+    </Pressable>
   );
 }
 
@@ -175,6 +188,7 @@ function makeStyles(colors: ThemeColors, spacing: (n: number) => number, fontSca
     },
     rowLabel: { fontSize: 13 * fontScale, fontWeight: "600", color: colors.text },
     rowValue: { fontSize: 12 * fontScale, color: colors.textMuted },
+    rowChevron: { fontSize: 16 * fontScale, color: colors.textMuted, marginLeft: spacing(1) },
     footnote: {
       fontSize: 11 * fontScale,
       color: colors.textMuted,

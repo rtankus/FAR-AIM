@@ -27,6 +27,44 @@ interface WfsResponse {
   features: WfsFeature[];
 }
 
+/** A geometry's polygons, each as its own list of rings (outer + holes) — a Polygon is just one such list. */
+function polygonsOf(geom: GeoJsonGeometry): number[][][][] {
+  return geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
+}
+
+/**
+ * The FAA's WFS service publishes one feature per contiguous polygon, so a
+ * TFR with multiple separate areas (or one that crosses the geoserver's own
+ * tiling) comes back as several features sharing the same NOTAM_KEY — which
+ * broke every screen keying a list by `tfr.id` (React "duplicate key"
+ * warning, and FlatList silently dropping rows). Merge those into one Tfr
+ * with a combined MultiPolygon instead of letting duplicates reach the UI.
+ */
+function mergeByNotamKey(features: WfsFeature[]): Tfr[] {
+  const byKey = new Map<string, Tfr>();
+  for (const f of features) {
+    const key = f.properties.NOTAM_KEY;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, {
+        id: key,
+        title: f.properties.TITLE,
+        state: f.properties.STATE,
+        legal: f.properties.LEGAL,
+        lastModified: f.properties.LAST_MODIFICATION_DATETIME,
+        geometry: f.geometry,
+      });
+      continue;
+    }
+    const coordinates: number[][][][] = [...polygonsOf(existing.geometry), ...polygonsOf(f.geometry)];
+    existing.geometry = { type: "MultiPolygon", coordinates };
+    if (f.properties.LAST_MODIFICATION_DATETIME > existing.lastModified) {
+      existing.lastModified = f.properties.LAST_MODIFICATION_DATETIME;
+    }
+  }
+  return [...byKey.values()];
+}
+
 /** Every active/upcoming TFR the FAA is currently publishing. */
 export async function fetchActiveTfrs(): Promise<Tfr[]> {
   const controller = new AbortController();
@@ -35,16 +73,7 @@ export async function fetchActiveTfrs(): Promise<Tfr[]> {
     const res = await fetch(WFS_URL, { signal: controller.signal });
     if (!res.ok) throw new Error(`FAA TFR service returned ${res.status}`);
     const data: WfsResponse = await res.json();
-    return data.features
-      .filter((f) => f.geometry && f.properties.NOTAM_KEY)
-      .map((f) => ({
-        id: f.properties.NOTAM_KEY,
-        title: f.properties.TITLE,
-        state: f.properties.STATE,
-        legal: f.properties.LEGAL,
-        lastModified: f.properties.LAST_MODIFICATION_DATETIME,
-        geometry: f.geometry,
-      }));
+    return mergeByNotamKey(data.features.filter((f) => f.geometry && f.properties.NOTAM_KEY));
   } finally {
     clearTimeout(timer);
   }

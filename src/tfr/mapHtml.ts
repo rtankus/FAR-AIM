@@ -49,7 +49,8 @@ export function buildTfrMapHtml({ tfrs, focusId, center, radiusNm, deviceCoords,
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <style>${LEAFLET_CSS}</style>
 <style>
-  html, body, #map { height: 100%; margin: 0; background: ${colors.background}; }
+  html, body, #map { height: 100%; margin: 0; background: ${colors.background}; overflow: hidden;
+    overscroll-behavior: none; touch-action: none; }
   .tfr-popup { font-family: -apple-system, sans-serif; font-size: 13px; max-width: 240px; }
   .tfr-popup .id { font-weight: 700; }
   .tfr-popup .legal { color: #666; margin-top: 2px; }

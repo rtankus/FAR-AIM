@@ -21,6 +21,7 @@ import TfrListScreen from "../screens/TfrListScreen";
 import TfrMapScreen from "../screens/TfrMapScreen";
 import NearbyAirportsScreen from "../screens/NearbyAirportsScreen";
 import AirportDetailScreen from "../screens/AirportDetailScreen";
+import ProcedurePlateScreen from "../screens/ProcedurePlateScreen";
 import PerformanceScreen from "../screens/PerformanceScreen";
 import AircraftProfileFormScreen from "../screens/AircraftProfileFormScreen";
 import WeightAndBalanceScreen from "../screens/WeightAndBalanceScreen";
@@ -77,8 +78,17 @@ function WeatherStack() {
       <Stack.Screen name="Notams" component={NotamScreen} options={{ title: "NOTAMs" }} />
       <Stack.Screen name="Tfr" component={TfrListScreen} options={{ title: "TFRs" }} />
       <Stack.Screen name="TfrMap" component={TfrMapScreen} options={{ title: "TFR Map" }} />
-      <Stack.Screen name="NearbyAirports" component={NearbyAirportsScreen} options={{ title: "Nearby Airports" }} />
+    </Stack.Navigator>
+  );
+}
+
+function AirportsStack() {
+  const { colors } = useTheme();
+  return (
+    <Stack.Navigator screenOptions={stackScreenOptions(colors)}>
+      <Stack.Screen name="NearbyAirports" component={NearbyAirportsScreen} options={{ title: "Airports" }} />
       <Stack.Screen name="AirportDetail" component={AirportDetailScreen} options={{ title: "Airport" }} />
+      <Stack.Screen name="ProcedurePlate" component={ProcedurePlateScreen} options={{ title: "Procedure" }} />
     </Stack.Navigator>
   );
 }
@@ -111,6 +121,7 @@ const TAB_ICONS: Record<keyof TabParamList, string> = {
   HomeTab: "🏠",
   ReferenceTab: "📖",
   WeatherTab: "⛅",
+  AirportsTab: "🛬",
   PerformanceTab: "🧮",
   SettingsTab: "⚙︎",
 };
@@ -146,6 +157,7 @@ export default function RootNavigator() {
       <Tab.Screen name="HomeTab" component={HomeStack} options={{ title: "Home" }} />
       <Tab.Screen name="ReferenceTab" component={ReferenceStack} options={{ title: "Reference" }} />
       <Tab.Screen name="WeatherTab" component={WeatherStack} options={{ title: "Weather" }} />
+      <Tab.Screen name="AirportsTab" component={AirportsStack} options={{ title: "Airports" }} />
       <Tab.Screen name="PerformanceTab" component={PerformanceStack} options={{ title: "Performance" }} />
       <Tab.Screen name="SettingsTab" component={SettingsStack} options={{ title: "Settings" }} />
     </Tab.Navigator>

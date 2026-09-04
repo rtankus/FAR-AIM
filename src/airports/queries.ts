@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 import type { BoundingBox } from "../weather/types";
-import type { Airport, Frequency, Navaid, Procedure, Runway } from "./types";
+import type { Airport, Frequency, Navaid, Procedure, ProcedureLeg, ProcedureType, Runway } from "./types";
 
 /**
  * Airports whose lat/lon falls in `box` — a cheap indexed bbox prefilter;
@@ -42,4 +42,17 @@ export async function getFrequencies(db: SQLiteDatabase, airportIdent: string): 
   return db.getAllAsync<Frequency>(`SELECT * FROM frequencies WHERE airport_ident = ? ORDER BY type`, [
     airportIdent.toUpperCase(),
   ]);
+}
+
+/** All legs of every transition of one procedure (e.g. one SID), ordered so grouping by transition_ident and taking them in order reconstructs each transition's fix sequence. */
+export async function getProcedureLegs(
+  db: SQLiteDatabase,
+  airportIdent: string,
+  type: ProcedureType,
+  name: string
+): Promise<ProcedureLeg[]> {
+  return db.getAllAsync<ProcedureLeg>(
+    `SELECT * FROM procedure_legs WHERE airport_ident = ? AND type = ? AND name = ? ORDER BY transition_ident, seq`,
+    [airportIdent.toUpperCase(), type, name]
+  );
 }

@@ -113,6 +113,12 @@ export async function initUserDb(userDb: SQLiteDatabase): Promise<void> {
       payload TEXT NOT NULL,
       updated_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS notam_cache (
+      key TEXT PRIMARY KEY,
+      payload TEXT NOT NULL,
+      fetched_at INTEGER NOT NULL
+    );
   `);
 }
 
@@ -485,6 +491,29 @@ export async function setPerfProfileRow(
 
 export async function deletePerfProfileRow(userDb: SQLiteDatabase, id: string): Promise<void> {
   await userDb.runAsync(`DELETE FROM perf_profiles WHERE id = ?`, [id]);
+}
+
+/**
+ * Read-through cache for NOTAM lookups — see src/notams/cache.ts, which is
+ * what everything except this file should call.
+ */
+export async function getNotamCacheEntry(
+  userDb: SQLiteDatabase,
+  key: string
+): Promise<{ payload: string; fetchedAt: number } | null> {
+  const row = await userDb.getFirstAsync<{ payload: string; fetched_at: number }>(
+    `SELECT payload, fetched_at FROM notam_cache WHERE key = ?`,
+    [key]
+  );
+  return row ? { payload: row.payload, fetchedAt: row.fetched_at } : null;
+}
+
+export async function setNotamCacheEntry(userDb: SQLiteDatabase, key: string, payload: string): Promise<void> {
+  await userDb.runAsync(`INSERT OR REPLACE INTO notam_cache (key, payload, fetched_at) VALUES (?, ?, ?)`, [
+    key,
+    payload,
+    Date.now(),
+  ]);
 }
 
 /** All section ids that have at least one note-bearing highlight, most-recently-updated first. */

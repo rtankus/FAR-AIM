@@ -1,5 +1,6 @@
 import type { NavigatorScreenParams } from "@react-navigation/native";
 import type { Source } from "../../content/types";
+import type { ProcedureType } from "../../airports/types";
 
 // One shared route table, reused by every tab's own nested stack navigator
 // (see RootNavigator.tsx). Each stack only actually registers the subset of
@@ -28,8 +29,10 @@ export type RootStackParamList = {
   TfrMap:
     | { focusId?: string; center?: { lat: number; lon: number; label: string }; radiusNm?: number }
     | undefined;
+  // Airports tab
   NearbyAirports: undefined;
   AirportDetail: { ident: string };
+  ProcedurePlate: { airportIdent: string; type: ProcedureType; name: string };
   // Performance tab
   Performance: undefined;
   AircraftProfileForm: { id?: string } | undefined;
@@ -48,6 +51,7 @@ export type TabParamList = {
   HomeTab: NavigatorScreenParams<RootStackParamList>;
   ReferenceTab: NavigatorScreenParams<RootStackParamList>;
   WeatherTab: NavigatorScreenParams<RootStackParamList>;
+  AirportsTab: NavigatorScreenParams<RootStackParamList>;
   PerformanceTab: NavigatorScreenParams<RootStackParamList>;
   SettingsTab: NavigatorScreenParams<RootStackParamList>;
 };

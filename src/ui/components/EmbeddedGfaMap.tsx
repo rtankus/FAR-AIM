@@ -14,6 +14,12 @@ export function EmbeddedGfaMap({ height = 460 }: { height?: number }) {
         source={{ uri: GFA_URL }}
         style={styles.webview}
         onLoadEnd={() => setLoading(false)}
+        // This sits inside a scrolling Home screen — without disabling the
+        // WebView's own scroll/bounce, panning the map fights the outer
+        // ScrollView's gesture recognizer and drags the whole screen with it.
+        scrollEnabled={false}
+        bounces={false}
+        overScrollMode="never"
       />
       {loading ? (
         <View style={[styles.loading, { backgroundColor: colors.surface }]}>

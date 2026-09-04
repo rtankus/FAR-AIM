@@ -87,6 +87,13 @@ export default function TfrMapScreen({ route }: Props) {
           originWhitelist={["*"]}
           source={{ html }}
           style={styles.webview}
+          // Leaflet pans/zooms the map itself via its own touch handling
+          // (CSS transforms), not native scrolling — leaving the WebView's
+          // own outer scroll/bounce enabled just fights it and drags the
+          // surrounding screen along with a pan/pinch gesture.
+          scrollEnabled={false}
+          bounces={false}
+          overScrollMode="never"
         />
       ) : null}
 

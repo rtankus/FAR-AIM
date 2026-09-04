@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useUserDb } from "../UserDbContext";
 import { useTheme } from "../ThemeContext";
 import type { ThemeColors } from "../theme";
@@ -13,6 +13,10 @@ import { EmbeddedGfaMap } from "./EmbeddedGfaMap";
 import { EmbeddedTfrMap } from "./EmbeddedTfrMap";
 
 const TFR_RADIUS_NM = 100;
+// National, not tied to any one location like the weather/TFR/GFA data above —
+// a link out to the FAA's own live dashboard makes more sense than trying to
+// embed and re-theme its map/table UI inline here.
+const NAS_STATUS_URL = "https://nasstatus.faa.gov/";
 
 export interface PreflightBriefingPanelProps {
   onOpenWeather: () => void;
@@ -138,6 +142,7 @@ export function PreflightBriefingPanel({
       <View style={styles.linkRow}>
         <LinkChip label="All nearby weather" onPress={onOpenWeather} />
         <LinkChip label="NOTAMs" onPress={onOpenNotams} />
+        <LinkChip label="NAS Status" onPress={() => Linking.openURL(NAS_STATUS_URL)} />
       </View>
     </>
   );

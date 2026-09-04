@@ -4,6 +4,8 @@ import { useTheme } from "../ThemeContext";
 import type { ThemeColors } from "../theme";
 import { densityAltitude, isaStandardTempC, maneuveringSpeed, pressureAltitude } from "../../performance/calculations";
 
+const r = (n: number | null, d = 1) => (n != null && Number.isFinite(n) ? n.toFixed(d) : "—");
+
 function useNumberInput(initial = "") {
   const [text, setText] = useState(initial);
   const n = parseFloat(text);
@@ -39,9 +41,22 @@ export default function QuickCalculatorsScreen() {
       </Row>
       <Field label="OAT (°C)" input={oat} />
       <View style={styles.resultCard}>
-        <ResultLine label="Pressure altitude" value={pa != null ? `${Math.round(pa)} ft` : "—"} />
-        <ResultLine label="ISA standard temp" value={stdTemp != null ? `${stdTemp.toFixed(1)}°C` : "—"} />
-        <ResultLine label="Density altitude" value={da != null ? `${Math.round(da)} ft` : "—"} big />
+        <ResultLine
+          label="Pressure altitude"
+          value={pa != null ? `${Math.round(pa)} ft` : "—"}
+          formula={`(29.92 − ${r(altimeter.value, 2)}) × 1000 + ${r(elevation.value, 0)} = ${r(pa, 0)} ft`}
+        />
+        <ResultLine
+          label="ISA standard temp"
+          value={stdTemp != null ? `${stdTemp.toFixed(1)}°C` : "—"}
+          formula={`15 − 2 × (${r(elevation.value, 0)} ÷ 1000) = ${r(stdTemp)}°C`}
+        />
+        <ResultLine
+          label="Density altitude"
+          value={da != null ? `${Math.round(da)} ft` : "—"}
+          formula={`${r(pa, 0)} + 120 × (${r(oat.value)} − ${r(stdTemp)}) = ${r(da, 0)} ft`}
+          big
+        />
       </View>
 
       <Text style={styles.sectionTitle}>Maneuvering Speed (Va)</Text>
@@ -51,7 +66,12 @@ export default function QuickCalculatorsScreen() {
       </Row>
       <Field label="Va at max gross (kt)" input={vaMaxGross} />
       <View style={styles.resultCard}>
-        <ResultLine label="Va at current weight" value={va != null ? `${va.toFixed(1)} kt` : "—"} big />
+        <ResultLine
+          label="Va at current weight"
+          value={va != null ? `${va.toFixed(1)} kt` : "—"}
+          formula={`√(${r(weight.value)} ÷ ${r(maxGross.value)}) × ${r(vaMaxGross.value)} = ${r(va)} kt`}
+          big
+        />
       </View>
 
       <Text style={styles.footnote}>
@@ -85,13 +105,16 @@ function Field({ label, input }: { label: string; input: ReturnType<typeof useNu
   );
 }
 
-function ResultLine({ label, value, big }: { label: string; value: string; big?: boolean }) {
+function ResultLine({ label, value, formula, big }: { label: string; value: string; formula: string; big?: boolean }) {
   const { colors, spacing, fontScale } = useTheme();
   const styles = useMemo(() => makeStyles(colors, spacing, fontScale), [colors, spacing, fontScale]);
   return (
-    <View style={styles.resultLine}>
-      <Text style={styles.resultLabel}>{label}</Text>
-      <Text style={[styles.resultValue, big && { fontSize: 20 * fontScale, fontWeight: "800" }]}>{value}</Text>
+    <View style={styles.resultBlock}>
+      <View style={styles.resultLine}>
+        <Text style={styles.resultLabel}>{label}</Text>
+        <Text style={[styles.resultValue, big && { fontSize: 20 * fontScale, fontWeight: "800" }]}>{value}</Text>
+      </View>
+      <Text style={styles.formulaText}>{formula}</Text>
     </View>
   );
 }
@@ -127,9 +150,11 @@ function makeStyles(colors: ThemeColors, spacing: (n: number) => number, fontSca
       borderColor: colors.border,
       marginTop: spacing(0.5),
     },
+    resultBlock: { marginBottom: 4 },
     resultLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 4 },
     resultLabel: { fontSize: 13 * fontScale, color: colors.textMuted },
     resultValue: { fontSize: 15 * fontScale, fontWeight: "700", color: colors.text },
+    formulaText: { fontSize: 11 * fontScale, color: colors.textMuted, fontFamily: "Menlo", lineHeight: 15 * fontScale },
     footnote: { fontSize: 11 * fontScale, color: colors.textMuted, marginTop: spacing(3), lineHeight: 16 * fontScale },
   });
 }

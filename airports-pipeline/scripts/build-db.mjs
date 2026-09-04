@@ -20,7 +20,7 @@ async function loadJson(name) {
   return JSON.parse(await readFile(path.join(OUT_DIR, `${name}.json`), "utf-8"));
 }
 
-function buildDatabase({ airports, runways, frequencies, navaids, procedures }) {
+function buildDatabase({ airports, runways, frequencies, navaids, procedures, procedureLegs }) {
   try {
     unlinkSync(DB_PATH);
   } catch {
@@ -56,6 +56,27 @@ function buildDatabase({ airports, runways, frequencies, navaids, procedures }) 
     );
     CREATE INDEX idx_procedures_airport ON procedures(airport_ident);
 
+    -- One row per procedure leg (a fix along one transition of one
+    -- SID/STAR/approach) — the actual "plate" text. Multiple transitions
+    -- (e.g. several runway or enroute transitions) share the same
+    -- airport_ident/type/name and are told apart by transition_ident.
+    CREATE TABLE procedure_legs (
+      airport_ident TEXT NOT NULL,
+      type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      route_type TEXT,
+      transition_ident TEXT NOT NULL,
+      seq INTEGER NOT NULL,
+      fix_ident TEXT,
+      path_terminator TEXT,
+      desc_code TEXT,
+      alt_desc TEXT,
+      alt1 INTEGER,
+      alt2 INTEGER
+    );
+    CREATE INDEX idx_legs_procedure ON procedure_legs(airport_ident, type, name, transition_ident, seq);
+    CREATE INDEX idx_legs_fix ON procedure_legs(fix_ident);
+
     CREATE TABLE navaids (
       ident TEXT NOT NULL, name TEXT, type TEXT,
       lat REAL NOT NULL, lon REAL NOT NULL, freq_khz INTEGER
@@ -86,6 +107,11 @@ function buildDatabase({ airports, runways, frequencies, navaids, procedures }) 
   const insertProcedure = db.prepare(
     `INSERT INTO procedures (airport_ident, name, type) VALUES (@airportIdent, @name, @type)`
   );
+  const insertLeg = db.prepare(
+    `INSERT INTO procedure_legs
+       (airport_ident, type, name, route_type, transition_ident, seq, fix_ident, path_terminator, desc_code, alt_desc, alt1, alt2)
+     VALUES (@airportIdent, @type, @name, @routeType, @transitionIdent, @seq, @fixIdent, @pathTerminator, @descCode, @altDesc, @alt1, @alt2)`
+  );
   const insertNavaid = db.prepare(
     `INSERT INTO navaids (ident, name, type, lat, lon, freq_khz) VALUES (@ident, @name, @type, @lat, @lon, @freqKhz)`
   );
@@ -97,6 +123,7 @@ function buildDatabase({ airports, runways, frequencies, navaids, procedures }) 
     for (const a of airports) insertAirport.run(a);
     for (const r of runways) insertRunway.run(r);
     for (const p of procedures) insertProcedure.run(p);
+    for (const l of procedureLegs) insertLeg.run(l);
     for (const n of navaids) insertNavaid.run(n);
     for (const f of frequencies) insertFrequency.run(f);
   });
@@ -109,12 +136,13 @@ async function main() {
   await mkdir(OUT_DIR, { recursive: true });
   await mkdir(APP_ASSETS_DIR, { recursive: true });
 
-  const [airports, runways, frequencies, navaids, procedures] = await Promise.all([
+  const [airports, runways, frequencies, navaids, procedures, procedureLegs] = await Promise.all([
     loadJson("airports"),
     loadJson("runways"),
     loadJson("frequencies"),
     loadJson("navaids"),
     loadJson("procedures"),
+    loadJson("procedure_legs"),
   ]);
 
   if (airports.length === 0) {
@@ -122,7 +150,7 @@ async function main() {
     process.exit(1);
   }
 
-  const db = buildDatabase({ airports, runways, frequencies, navaids, procedures });
+  const db = buildDatabase({ airports, runways, frequencies, navaids, procedures, procedureLegs });
 
   const version = new Date().toISOString().replace(/[:.]/g, "-");
   db.prepare(`INSERT INTO meta (key, value) VALUES ('data_version', ?)`).run(version);
@@ -140,6 +168,7 @@ async function main() {
     airportCount: airports.length,
     runwayCount: runways.length,
     procedureCount: procedures.length,
+    procedureLegCount: procedureLegs.length,
     navaidCount: navaids.length,
     frequencyCount: frequencies.length,
     // Published by .github/workflows/update-airports.yml to a rolling
@@ -154,7 +183,7 @@ async function main() {
 
   console.log(`\nBuilt ${DB_PATH}`);
   console.log(
-    `  ${airports.length} airports, ${runways.length} runways, ${procedures.length} procedures, ${navaids.length} navaids, ${frequencies.length} frequencies`
+    `  ${airports.length} airports, ${runways.length} runways, ${procedures.length} procedures (${procedureLegs.length} legs), ${navaids.length} navaids, ${frequencies.length} frequencies`
   );
   console.log(`  version ${version}`);
   console.log(`Copied bundle into ${APP_ASSETS_DIR}`);
