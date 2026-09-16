@@ -1,8 +1,8 @@
 {
-  "version": "2026-09-09T13-23-03-946Z",
-  "builtAt": "2026-09-09T13:23:03.981Z",
-  "sha256": "0cccc6f90ad9bacead5ab01d5957eb46902d6614aa43a747d8a79e12eaf6e131",
-  "sizeBytes": 27684864,
+  "version": "2026-09-16T14-01-35-154Z",
+  "builtAt": "2026-09-16T14:01:35.187Z",
+  "sha256": "2e06b224023b46738ab9c213c11431670520c0bfe2043e434d1d02f3e5736264",
+  "sizeBytes": 27693056,
   "airportCount": 25051,
   "runwayCount": 22858,
   "procedureCount": 13671,
